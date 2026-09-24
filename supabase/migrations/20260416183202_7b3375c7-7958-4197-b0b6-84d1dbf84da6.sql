@@ -1,0 +1,21 @@
+ALTER TABLE public.bachurim REPLICA IDENTITY FULL;
+ALTER TABLE public.outings REPLICA IDENTITY FULL;
+ALTER TABLE public.incomes REPLICA IDENTITY FULL;
+ALTER TABLE public.expenses REPLICA IDENTITY FULL;
+ALTER TABLE public.debts REPLICA IDENTITY FULL;
+ALTER TABLE public.askanim_incomes REPLICA IDENTITY FULL;
+ALTER TABLE public.basket_products REPLICA IDENTITY FULL;
+ALTER TABLE public.global_settings REPLICA IDENTITY FULL;
+ALTER TABLE public.fundraisers REPLICA IDENTITY FULL;
+ALTER TABLE public.expense_categories REPLICA IDENTITY FULL;
+
+ALTER PUBLICATION supabase_realtime ADD TABLE public.bachurim;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.outings;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.incomes;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.expenses;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.debts;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.askanim_incomes;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.basket_products;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.global_settings;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.fundraisers;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.expense_categories;

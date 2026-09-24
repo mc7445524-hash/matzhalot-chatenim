@@ -1,0 +1,10 @@
+project_id = "qclnahxibyldarciazxh"
+
+[functions.notify-admin-signup]
+verify_jwt = false
+
+[functions.approve-user]
+verify_jwt = false
+
+[functions.request-password-reset]
+verify_jwt = false
