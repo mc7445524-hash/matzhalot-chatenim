@@ -9,9 +9,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: oven-sh/setup-bun@v2
+
       - name: Deploy with Wrangler
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-        env:
-          CLOUDFLARE_ACCOUNT_ID: b3a00d289294f2a00926728f8db96d34
+          accountId: b3a00d289294f2a00926728f8db96d34
+          command: deploy --no-bundle
