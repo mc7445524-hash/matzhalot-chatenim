@@ -1,0 +1,15 @@
+{
+  "name": "matzhalot-chatenim",
+  "version": "1.0.0",
+  "type": "module",
+  "dependencies": {
+    "h3-v2": "latest",
+    "@tanstack/router-core": "latest",
+    "@tanstack/history": "latest",
+    "@tanstack/react-router": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "seroval": "latest",
+    "@supabase/supabase-js": "latest"
+  }
+}
