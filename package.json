@@ -5,6 +5,7 @@
   "dependencies": {
     "h3-v2": "latest",
     "seroval": "1.5.1",
+    "seroval-plugins": "1.5.1",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "@tanstack/router-core": "1.168.9",
@@ -38,6 +39,8 @@
     "xlsx": "0.18.5"
   },
   "overrides": {
-    "@tanstack/router-core": "1.168.9"
+    "@tanstack/router-core": "1.168.9",
+    "seroval": "1.5.1",
+    "seroval-plugins": "1.5.1"
   }
 }
