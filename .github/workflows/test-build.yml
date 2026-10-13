@@ -1,0 +1,44 @@
+name: Test Build (no deploy)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Snapshot current dist
+        run: |
+          mkdir -p /tmp/old
+          cp -r dist/* /tmp/old/
+          echo "--- committed dist (currently live) ---"
+          find /tmp/old -type f | sort
+
+      - name: Install
+        run: npm install
+
+      - name: Build
+        run: npm run build
+
+      - name: Compare new build vs live dist
+        run: |
+          echo "--- newly built dist ---"
+          find dist -type f | sort
+          echo ""
+          echo "--- server entry present? ---"
+          test -f dist/server/server.js && echo "YES dist/server/server.js" || echo "NO  dist/server/server.js  <-- wrangler needs this"
+          test -d dist/client && echo "YES dist/client/" || echo "NO  dist/client/"
+          echo ""
+          echo "--- Supabase URL baked into client bundle? ---"
+          grep -rho 'https://[a-z0-9]\{15,25\}\.supabase\.co' dist/client | sort -u || echo "none found"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fresh-build
+          path: dist/
