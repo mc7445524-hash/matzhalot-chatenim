@@ -13,18 +13,25 @@ jobs:
         with:
           node-version: 22
 
-      - name: Snapshot current dist
-        run: |
-          mkdir -p /tmp/old
-          cp -r dist/* /tmp/old/
-          echo "--- committed dist (currently live) ---"
-          find /tmp/old -type f | sort
-
       - name: Install
         run: npm install
 
       - name: Build
-        run: npm run build
+        run: |
+          rm -rf dist
+          npm run build
+
+      - name: CSS manifest consistency check
+        run: |
+          echo "--- CSS files actually emitted to dist/client ---"
+          ls -1 dist/client/assets/*.css 2>/dev/null | xargs -n1 basename
+          echo ""
+          echo "--- CSS names referenced inside dist/server ---"
+          grep -rho 'styles-[A-Za-z0-9_-]*\.css' dist/server/ | sort -u
+          echo ""
+          EMITTED=$(ls -1 dist/client/assets/*.css | xargs -n1 basename | sort -u)
+          REFD=$(grep -rho 'styles-[A-Za-z0-9_-]*\.css' dist/server/ | sort -u)
+          if [ "$EMITTED" = "$REFD" ]; then echo "MATCH - server and client agree"; else echo "MISMATCH - server points at a file that does not exist"; fi
 
       - name: Compare new build vs live dist
         run: |
