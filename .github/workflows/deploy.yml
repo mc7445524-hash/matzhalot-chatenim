@@ -11,8 +11,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install dependencies
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install
         run: npm install
+
+      - name: Build from source
+        run: |
+          rm -rf dist
+          npm run build
+
+      - name: Verify build output
+        run: |
+          test -f dist/server/server.js || { echo "missing dist/server/server.js"; exit 1; }
+          test -d dist/client || { echo "missing dist/client"; exit 1; }
+          grep -rq 'vggltzctdheulyunfjzn' dist/client || { echo "wrong or missing Supabase URL in client bundle"; exit 1; }
+          echo "build output OK"
 
       - name: Install wrangler
         run: npm install -g wrangler
