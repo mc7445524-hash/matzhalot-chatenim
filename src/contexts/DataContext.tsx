@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   type Bachur, type Income, type Expense, type Debt, type AskanimIncome,
   type BasketProduct, type GlobalSettingsData,
@@ -57,6 +58,7 @@ export function useData(): DataContextType {
 }
 
 export function DataProvider({ children }: { children: ReactNode }) {
+  const { profileStatus } = useAuth();
   const [loading, setLoading] = useState(true);
   const [bachurim, _setBachurim] = useState<Bachur[]>([]);
   const [incomes, _setIncomes] = useState<Income[]>([]);
@@ -99,7 +101,16 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  useEffect(() => { loadAll(); }, [loadAll]);
+  // Reload whenever the user becomes approved. Without the profileStatus
+  // dependency this ran once at mount — before sign-in — so RLS returned
+  // empty lists and the UI showed zeros until a manual refresh.
+  useEffect(() => {
+    if (profileStatus === "approved") {
+      loadAll();
+    } else {
+      setLoading(false);
+    }
+  }, [loadAll, profileStatus]);
 
   // Listen for localStorage changes (cross-tab + realtime-sync dispatches)
   // so that modules which still write directly to localStorage stay in sync
