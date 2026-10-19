@@ -24,6 +24,7 @@ import { useFocusRow } from "@/hooks/useFocusRow";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "sonner";
+import { downloadInvoice as fetchInvoice } from "@/lib/db";
 
 // ─── Types ────────────────────────────────────────────────────
 interface Expense {
@@ -40,6 +41,12 @@ interface Expense {
   invoiceFileName?: string;
   invoiceFileData?: string;
   invoiceFileType?: string;
+  invoicePath?: string;
+}
+
+/** True once the invoice exists either in storage or as a just-picked file. */
+function hasInvoice(e: Expense) {
+  return !!(e.invoicePath || e.invoiceFileData);
 }
 
 const DEFAULT_SUB_SALIM = ["גור", "דקל", 'חכ"ם', "אוצרות ההלבשה", "אותיות", "פרוכטר", "גפנרס", "שונות"];
@@ -102,6 +109,8 @@ export default function ExpensesModule() {
   const [formInvoiceName, setFormInvoiceName] = useState<string | undefined>();
   const [formInvoiceData, setFormInvoiceData] = useState<string | undefined>();
   const [formInvoiceType, setFormInvoiceType] = useState<string | undefined>();
+  // Set when editing an expense whose invoice already lives in storage.
+  const [formInvoicePath, setFormInvoicePath] = useState<string | undefined>();
 
   // download dialog
   const [downloadOpen, setDownloadOpen] = useState(false);
@@ -130,7 +139,7 @@ export default function ExpensesModule() {
     Number(formAmount) > 0 &&
     formCategory &&
     formSub &&
-    (!needsInvoice || !!formInvoiceData);
+    (!needsInvoice || !!formInvoiceData || !!formInvoicePath);
 
   // ─── Category management helpers ───────────────────────────
   function addCategory(type: "salim" | "amuta") {
@@ -189,6 +198,7 @@ export default function ExpensesModule() {
     setFormInvoiceName(undefined);
     setFormInvoiceData(undefined);
     setFormInvoiceType(undefined);
+    setFormInvoicePath(undefined);
     setEditTarget(null);
     setAddOpen(true);
   }
@@ -204,6 +214,7 @@ export default function ExpensesModule() {
     setFormInvoiceName(exp.invoiceFileName);
     setFormInvoiceData(exp.invoiceFileData);
     setFormInvoiceType(exp.invoiceFileType);
+    setFormInvoicePath(exp.invoicePath);
     setEditTarget(exp);
     setAddOpen(true);
   }
@@ -211,15 +222,25 @@ export default function ExpensesModule() {
   function handleSave() {
     const amount = Number(formAmount);
     if (!amount || !formCategory || !formSub) return;
-    if (formCategory === "עמותה" && formRecognized && !formInvoiceData) {
+    if (formCategory === "עמותה" && formRecognized && !formInvoiceData && !formInvoicePath) {
       toast.error("יש להעלות חשבונית כדי לשמור הוצאה מוכרת");
       return;
     }
 
     const recognized = formCategory === "עמותה" ? formRecognized : false;
     const invoiceFields = recognized
-      ? { invoiceFileName: formInvoiceName, invoiceFileData: formInvoiceData, invoiceFileType: formInvoiceType }
-      : { invoiceFileName: undefined, invoiceFileData: undefined, invoiceFileType: undefined };
+      ? {
+          invoiceFileName: formInvoiceName,
+          invoiceFileData: formInvoiceData,
+          invoiceFileType: formInvoiceType,
+          invoicePath: formInvoicePath,
+        }
+      : {
+          invoiceFileName: undefined,
+          invoiceFileData: undefined,
+          invoiceFileType: undefined,
+          invoicePath: undefined,
+        };
 
     if (editTarget) {
       const updated = expenses.map((e) =>
@@ -277,17 +298,28 @@ export default function ExpensesModule() {
       setFormInvoiceData(reader.result as string);
       setFormInvoiceName(file.name);
       setFormInvoiceType(file.type);
+      // A newly picked file supersedes whatever was in storage.
+      setFormInvoicePath(undefined);
     };
     reader.readAsDataURL(file);
     e.target.value = "";
   }
 
-  function downloadInvoice(exp: Expense) {
-    if (!exp.invoiceFileData) return;
+  async function downloadInvoice(exp: Expense) {
+    let href = exp.invoiceFileData;
+    let revoke = false;
+    if (!href && exp.invoicePath) {
+      const blob = await fetchInvoice(exp.invoicePath);
+      if (!blob) { toast.error("לא ניתן להוריד את החשבונית"); return; }
+      href = URL.createObjectURL(blob);
+      revoke = true;
+    }
+    if (!href) return;
     const a = document.createElement("a");
-    a.href = exp.invoiceFileData;
+    a.href = href;
     a.download = exp.invoiceFileName || `invoice-${exp.id}`;
     a.click();
+    if (revoke) setTimeout(() => URL.revokeObjectURL(href!), 10000);
   }
 
   // ─── Bulk download invoices by period ──────────────────────
@@ -309,7 +341,7 @@ export default function ExpensesModule() {
       (e) =>
         e.category === "עמותה" &&
         e.recognized &&
-        e.invoiceFileData &&
+        hasInvoice(e) &&
         e.date >= downloadFrom &&
         e.date <= downloadTo
     );
@@ -320,14 +352,20 @@ export default function ExpensesModule() {
     try {
       const JSZip = (await import("jszip")).default;
       const zip = new JSZip();
+      let failed = 0;
       for (const e of matches) {
-        const dataUrl = e.invoiceFileData!;
-        const base64 = dataUrl.split(",")[1] || "";
         const ext = (e.invoiceFileName?.split(".").pop() || "bin").toLowerCase();
         const safeContact = (e.contactPerson || "ללא").replace(/[\\/:*?"<>|]/g, "_");
         const fname = `${e.date}_${safeContact}_${e.amount}.${ext}`;
-        zip.file(fname, base64, { base64: true });
+        if (e.invoiceFileData) {
+          zip.file(fname, e.invoiceFileData.split(",")[1] || "", { base64: true });
+        } else {
+          const blob = await fetchInvoice(e.invoicePath!);
+          if (blob) zip.file(fname, blob);
+          else failed++;
+        }
       }
+      if (failed) toast.warning(`${failed} חשבוניות לא נמצאו באחסון ולא נכללו`);
       const blob = await zip.generateAsync({ type: "blob" });
 
       // Build folder name
@@ -572,7 +610,7 @@ export default function ExpensesModule() {
                           <><Circle className="ml-1 h-3 w-3" />לא מוכר</>
                         )}
                       </Badge>
-                      {exp.invoiceFileData && (
+                      {hasInvoice(exp) && (
                         <Button
                           variant="ghost"
                           size="sm"
@@ -680,6 +718,7 @@ export default function ExpensesModule() {
                             setFormInvoiceData(undefined);
                             setFormInvoiceName(undefined);
                             setFormInvoiceType(undefined);
+                            setFormInvoicePath(undefined);
                           }}
                         >
                           <X className="h-4 w-4" />

@@ -58,13 +58,17 @@ jobs:
         run: |
           URL=https://matzhalot.asher-weinberger.com
           sleep 15
-          HTML=$(curl -fsSL --max-time 30 "$URL") || { echo "site did not respond"; exit 1; }
-          echo "$HTML" | grep -q "קול מצהלות חתנים" || { echo "page loaded but expected content is missing"; exit 1; }
-          JS=$(echo "$HTML" | grep -o '/assets/main-[A-Za-z0-9_-]*\.js' | head -1)
-          [ -n "$JS" ] || { echo "no main script referenced in HTML"; exit 1; }
-          curl -fsS --max-time 30 -o /dev/null "$URL$JS" || { echo "main script $JS is missing (404)"; exit 1; }
-          CSS=$(echo "$HTML" | grep -o '/assets/styles-[A-Za-z0-9_-]*\.css' | head -1)
+          curl -fsSL --compressed --max-time 30 "$URL" -o /tmp/live.html || { echo "site did not respond"; exit 1; }
+          grep -q "קול מצהלות חתנים" /tmp/live.html || { echo "page loaded but expected content is missing"; exit 1; }
+          # Asset basenames change between framework versions, so match any script.
+          JS=$(grep -o '/assets/[A-Za-z0-9._-]*\.js' /tmp/live.html | head -1)
+          [ -n "$JS" ] || { echo "no script referenced in HTML"; exit 1; }
+          echo "checking $JS"
+          curl -fsS --max-time 30 -o /dev/null "$URL$JS" || { echo "script $JS is missing (404)"; exit 1; }
+          CSS=$(grep -o '/assets/[A-Za-z0-9._-]*\.css' /tmp/live.html | head -1)
           if [ -n "$CSS" ]; then
-            curl -fsS --max-time 30 -o /dev/null "$URL$CSS" && echo "stylesheet OK" || echo "WARNING: stylesheet $CSS is 404 (cosmetic flash on first paint)"
+            curl -fsS --max-time 30 -o /dev/null "$URL$CSS" \
+              && echo "stylesheet $CSS OK" \
+              || echo "::warning::stylesheet $CSS returns 404 - cosmetic flash on first paint, site still works"
           fi
           echo "SMOKE TEST PASSED - site is live and serving its assets"

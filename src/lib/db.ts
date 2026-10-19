@@ -50,6 +50,12 @@ export interface Expense {
   recognized: boolean;
   recognizedDate?: string;
   auto?: boolean;
+  /** Path inside the private "invoices" bucket. Set once the file is uploaded. */
+  invoicePath?: string;
+  invoiceFileName?: string;
+  invoiceFileType?: string;
+  /** Data URL of a freshly picked file, before it reaches storage. Never persisted. */
+  invoiceFileData?: string;
 }
 
 export interface Debt {
@@ -226,10 +232,54 @@ export async function fetchExpenses(): Promise<Expense[]> {
     recognized: r.recognized,
     recognizedDate: r.recognized_date || undefined,
     auto: r.auto || false,
+    invoicePath: r.invoice_path || undefined,
+    invoiceFileName: r.invoice_name || undefined,
+    invoiceFileType: r.invoice_type || undefined,
   }));
 }
 
+function dataUrlToBlob(dataUrl: string): Blob | null {
+  try {
+    const [header, b64] = dataUrl.split(",");
+    if (!b64) return null;
+    const mime = header.match(/data:([^;]+)/)?.[1] || "application/octet-stream";
+    const bin = atob(b64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return new Blob([bytes], { type: mime });
+  } catch { return null; }
+}
+
+/** Uploads a freshly picked invoice and returns its storage path. */
+async function uploadInvoice(expenseId: string, e: Expense): Promise<string | undefined> {
+  const blob = e.invoiceFileData ? dataUrlToBlob(e.invoiceFileData) : null;
+  if (!blob) return undefined;
+  const ext = (e.invoiceFileName?.split(".").pop() || "bin").toLowerCase();
+  const path = `${expenseId}/${crypto.randomUUID()}.${ext}`;
+  const { error } = await supabase.storage
+    .from("invoices")
+    .upload(path, blob, { contentType: blob.type || undefined, upsert: false });
+  if (error) { console.error("uploadInvoice", error); return undefined; }
+  return path;
+}
+
+/** Fetches an invoice back out of storage as a Blob. */
+export async function downloadInvoice(path: string): Promise<Blob | null> {
+  const { data, error } = await supabase.storage.from("invoices").download(path);
+  if (error) { console.error("downloadInvoice", error); return null; }
+  return data;
+}
+
 export async function saveExpensesToDb(expenses: Expense[]): Promise<void> {
+  // Upload any newly picked invoice before touching the table, so a failed
+  // upload can never leave a row pointing at a file that was never stored.
+  const paths = new Map<string, string>();
+  for (const e of expenses) {
+    if (e.invoicePath || !e.invoiceFileData) continue;
+    const path = await uploadInvoice(e.id, e);
+    if (path) paths.set(e.id, path);
+  }
+
   await supabase.from("expenses").delete().neq("id", "___never___");
   if (expenses.length === 0) return;
   const rows = expenses.map((e) => ({
@@ -243,6 +293,9 @@ export async function saveExpensesToDb(expenses: Expense[]): Promise<void> {
     recognized: e.recognized,
     recognized_date: e.recognizedDate || null,
     auto: e.auto || false,
+    invoice_path: e.invoicePath || paths.get(e.id) || null,
+    invoice_name: e.invoiceFileName || null,
+    invoice_type: e.invoiceFileType || null,
   }));
   for (let i = 0; i < rows.length; i += 500) {
     const { error } = await supabase.from("expenses").insert(rows.slice(i, i + 500));
