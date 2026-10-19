@@ -1,5 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
-import { Plus, Trash2, Pencil, Users, X, MessageSquarePlus, Check } from "lucide-react";
+import {
+  Plus, Trash2, Pencil, Users, X, MessageSquarePlus, Check,
+  Play, Square, Clock, Repeat,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,7 +23,18 @@ import {
   fetchTasks, createTask, updateTask, setTaskStatus, deleteTask,
   fetchEmployees, addEmployee, archiveEmployee,
   fetchTaskUpdates, addTaskUpdate, fetchUpdateCounts,
+  type TimeEntry, type TaskTemplate, type Frequency,
+  fetchTimeEntries, fetchMinutesByTask, addTimeEntry, deleteTimeEntry,
+  fetchTemplates, saveTemplate, deleteTemplate, runDueTemplates,
 } from "@/lib/tasks";
+
+const TIMER_KEY = "tasks_running_timer";
+const DAYS = ["ראשון", "שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת"];
+
+function fmtMinutes(m: number) {
+  const h = Math.floor(m / 60);
+  return h > 0 ? `${h}:${String(m % 60).padStart(2, "0")} שע׳` : `${m} דק׳`;
+}
 
 /** Sentinel for the "whole team" option in the assignee dropdown. */
 const ALL = "__all__";
@@ -60,6 +74,30 @@ export default function TasksModule() {
   /** "" = everyone's tasks, ALL = team-wide only, NONE = unassigned, else an id. */
   const [filterStaff, setFilterStaff] = useState("");
 
+  const [minutesByTask, setMinutesByTask] = useState<Record<string, number>>({});
+  // Survives a refresh: losing a running timer would lose real logged work.
+  const [running, setRunning] = useState<{ taskId: string; startedAt: number } | null>(() => {
+    try { return JSON.parse(localStorage.getItem(TIMER_KEY) || "null"); } catch { return null; }
+  });
+  const [tick, setTick] = useState(0);
+
+  const [timeTarget, setTimeTarget] = useState<Task | null>(null);
+  const [timeEntries, setTimeEntries] = useState<TimeEntry[]>([]);
+  const [manualMinutes, setManualMinutes] = useState("");
+  const [manualDate, setManualDate] = useState("");
+  const [manualNote, setManualNote] = useState("");
+  const [manualStaff, setManualStaff] = useState("");
+
+  const [tplOpen, setTplOpen] = useState(false);
+  const [templates, setTemplates] = useState<TaskTemplate[]>([]);
+  const [tplEdit, setTplEdit] = useState<TaskTemplate | null>(null);
+  const [tTitle, setTTitle] = useState("");
+  const [tFreq, setTFreq] = useState<Frequency>("daily");
+  const [tDow, setTDow] = useState(0);
+  const [tDom, setTDom] = useState(1);
+  const [tPriority, setTPriority] = useState<TaskPriority>("normal");
+  const [tAssignee, setTAssignee] = useState("");
+
   const [editOpen, setEditOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<Task | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Task | null>(null);
@@ -79,16 +117,34 @@ export default function TasksModule() {
   const [fPriority, setFPriority] = useState<TaskPriority>("normal");
   const [fAssignee, setFAssignee] = useState("");
   const [fBachur, setFBachur] = useState("");
+  const [fRemindDate, setFRemindDate] = useState("");
+  const [fRemindTime, setFRemindTime] = useState("09:00");
 
   const refresh = useCallback(async () => {
-    const [t, e, c] = await Promise.all([fetchTasks(), fetchEmployees(), fetchUpdateCounts()]);
+    const [t, e, c, m] = await Promise.all([
+      fetchTasks(), fetchEmployees(), fetchUpdateCounts(), fetchMinutesByTask(),
+    ]);
     setTasks(t);
     setEmployees(e);
     setUpdateCounts(c);
+    setMinutesByTask(m);
     setLoading(false);
   }, []);
 
-  useEffect(() => { refresh(); }, [refresh]);
+  useEffect(() => {
+    // Materialise any recurring template that came due, then load.
+    runDueTemplates().then((n) => {
+      if (n > 0) toast.info(`${n} משימות חוזרות נוצרו להיום`);
+      refresh();
+    });
+  }, [refresh]);
+
+  // Re-render once a second so the running timer counts up on screen.
+  useEffect(() => {
+    if (!running) return;
+    const id = setInterval(() => setTick((n) => n + 1), 1000);
+    return () => clearInterval(id);
+  }, [running]);
 
   const staffName = (id?: string) =>
     employees.find((e) => e.id === id)?.name || "";
@@ -99,6 +155,7 @@ export default function TasksModule() {
     setEditTarget(null);
     setFTitle(""); setFNotes(""); setFDate(""); setFTime("");
     setFPriority("normal"); setFAssignee(""); setFBachur("");
+    setFRemindDate(""); setFRemindTime("09:00");
     setEditOpen(true);
   }
 
@@ -111,6 +168,13 @@ export default function TasksModule() {
     setFPriority(t.priority);
     setFAssignee(t.assignAll ? ALL : t.assigneeId || "");
     setFBachur(t.bachurId || "");
+    if (t.remindAt) {
+      const d = new Date(t.remindAt);
+      setFRemindDate(d.toISOString().split("T")[0]);
+      setFRemindTime(d.toTimeString().slice(0, 5));
+    } else {
+      setFRemindDate(""); setFRemindTime("09:00");
+    }
     setEditOpen(true);
   }
 
@@ -126,6 +190,9 @@ export default function TasksModule() {
       assigneeId: fAssignee === ALL ? "" : fAssignee,
       assignAll: fAssignee === ALL,
       bachurId: fBachur,
+      remindAt: fRemindDate
+        ? new Date(`${fRemindDate}T${fRemindTime || "09:00"}`).toISOString()
+        : "",
     };
     const ok = editTarget
       ? await updateTask(editTarget.id, payload)
@@ -166,6 +233,127 @@ export default function TasksModule() {
     refresh();
   }
 
+  // ─── Timer ──────────────────────────────────────
+  function startTimer(t: Task) {
+    if (running) { toast.error("טיימר כבר פועל. עצור אותו קודם"); return; }
+    const state = { taskId: t.id, startedAt: Date.now() };
+    localStorage.setItem(TIMER_KEY, JSON.stringify(state));
+    setRunning(state);
+  }
+
+  async function stopTimer() {
+    if (!running) return;
+    const minutes = Math.max(1, Math.round((Date.now() - running.startedAt) / 60000));
+    const start = new Date(running.startedAt);
+    const ok = await addTimeEntry({
+      taskId: running.taskId,
+      entryDate: new Date().toISOString().split("T")[0],
+      minutes,
+      startTime: start.toTimeString().slice(0, 8),
+      endTime: new Date().toTimeString().slice(0, 8),
+      source: "timer",
+    });
+    localStorage.removeItem(TIMER_KEY);
+    setRunning(null);
+    if (!ok) { toast.error("שמירת הזמן נכשלה"); return; }
+    toast.success(`נרשמו ${fmtMinutes(minutes)}`);
+    refresh();
+  }
+
+  function elapsed() {
+    if (!running) return "";
+    const s = Math.floor((Date.now() - running.startedAt) / 1000);
+    const mm = String(Math.floor(s / 60)).padStart(2, "0");
+    const ss = String(s % 60).padStart(2, "0");
+    return `${mm}:${ss}`;
+  }
+
+  async function openTime(t: Task) {
+    setTimeTarget(t);
+    setManualMinutes(""); setManualNote(""); setManualStaff("");
+    setManualDate(today());
+    setTimeEntries(await fetchTimeEntries(t.id));
+  }
+
+  async function saveManualTime() {
+    const mins = Number(manualMinutes);
+    if (!timeTarget || !mins || mins <= 0) { toast.error("יש להזין מספר דקות"); return; }
+    const ok = await addTimeEntry({
+      taskId: timeTarget.id,
+      employeeId: manualStaff || undefined,
+      entryDate: manualDate || today(),
+      minutes: mins,
+      note: manualNote.trim() || undefined,
+    });
+    if (!ok) { toast.error("השמירה נכשלה"); return; }
+    setManualMinutes(""); setManualNote("");
+    setTimeEntries(await fetchTimeEntries(timeTarget.id));
+    refresh();
+  }
+
+  async function removeTime(id: string) {
+    if (!(await deleteTimeEntry(id))) { toast.error("המחיקה נכשלה"); return; }
+    if (timeTarget) setTimeEntries(await fetchTimeEntries(timeTarget.id));
+    refresh();
+  }
+
+  // ─── Recurring templates ────────────────────────
+  async function openTemplates() {
+    setTemplates(await fetchTemplates());
+    resetTplForm();
+    setTplOpen(true);
+  }
+
+  function resetTplForm() {
+    setTplEdit(null);
+    setTTitle(""); setTFreq("daily"); setTDow(0); setTDom(1);
+    setTPriority("normal"); setTAssignee("");
+  }
+
+  function editTpl(tpl: TaskTemplate) {
+    setTplEdit(tpl);
+    setTTitle(tpl.title);
+    setTFreq(tpl.frequency);
+    setTDow(tpl.dayOfWeek ?? 0);
+    setTDom(tpl.dayOfMonth ?? 1);
+    setTPriority(tpl.priority);
+    setTAssignee(tpl.assignAll ? ALL : tpl.assigneeId || "");
+  }
+
+  async function saveTpl() {
+    if (!tTitle.trim()) { toast.error("יש להזין כותרת"); return; }
+    const ok = await saveTemplate({
+      title: tTitle.trim(),
+      priority: tPriority,
+      frequency: tFreq,
+      dayOfWeek: tDow,
+      dayOfMonth: tDom,
+      assigneeId: tAssignee === ALL ? undefined : tAssignee || undefined,
+      assignAll: tAssignee === ALL,
+      active: tplEdit?.active ?? true,
+    }, tplEdit?.id);
+    if (!ok) { toast.error("השמירה נכשלה"); return; }
+    toast.success(tplEdit ? "התבנית עודכנה" : "התבנית נוספה");
+    resetTplForm();
+    setTemplates(await fetchTemplates());
+  }
+
+  async function toggleTpl(tpl: TaskTemplate) {
+    await saveTemplate({ ...tpl, active: !tpl.active }, tpl.id);
+    setTemplates(await fetchTemplates());
+  }
+
+  async function removeTpl(id: string) {
+    if (!(await deleteTemplate(id))) { toast.error("המחיקה נכשלה"); return; }
+    setTemplates(await fetchTemplates());
+  }
+
+  function tplWhen(t: TaskTemplate) {
+    if (t.frequency === "daily") return "כל יום";
+    if (t.frequency === "weekly") return `כל יום ${DAYS[t.dayOfWeek ?? 0]}`;
+    return `ב-${t.dayOfMonth} לחודש`;
+  }
+
   async function handleAddStaff() {
     const name = newStaff.trim();
     if (!name) return;
@@ -202,6 +390,9 @@ export default function TasksModule() {
           </p>
         </div>
         <div className="flex gap-2">
+          <Button variant="outline" onClick={openTemplates}>
+            <Repeat className="ml-1 h-4 w-4" />משימות חוזרות
+          </Button>
           <Button variant="outline" onClick={() => setStaffOpen(true)}>
             <Users className="ml-1 h-4 w-4" />עובדים
           </Button>
@@ -279,6 +470,12 @@ export default function TasksModule() {
                           ? <span className="font-medium text-indigo-600">כולם</span>
                           : t.assigneeId && <span className="text-muted-foreground">{staffName(t.assigneeId)}</span>}
                         {t.bachurId && <span className="text-primary">{bachurName(t.bachurId)}</span>}
+                        {t.remindAt && t.status !== "done" && (
+                          <span className="text-violet-600">
+                            🔔 {new Date(t.remindAt).toLocaleDateString("he-IL")}{" "}
+                            {new Date(t.remindAt).toTimeString().slice(0, 5)}
+                          </span>
+                        )}
                         {updateCounts[t.id] > 0 && (
                           <span className="flex items-center gap-1 text-sky-700 font-medium">
                             <MessageSquarePlus className="h-3 w-3" />
@@ -286,6 +483,11 @@ export default function TasksModule() {
                           </span>
                         )}
                       </div>
+
+                      <p className="text-[11px] text-muted-foreground/70">
+                        נוצרה {new Date(t.createdAt).toLocaleDateString("he-IL")}
+                        {minutesByTask[t.id] ? ` · הושקעו ${fmtMinutes(minutesByTask[t.id])}` : ""}
+                      </p>
 
                       <div className="flex flex-wrap gap-1 pt-1">
                         {COLUMNS.filter((c) => c.id !== t.status).map((c) => (
@@ -295,6 +497,20 @@ export default function TasksModule() {
                             {c.label}
                           </Button>
                         ))}
+                        {running?.taskId === t.id ? (
+                          <Button size="sm" variant="destructive" className="h-7 text-xs tabular-nums"
+                                  onClick={stopTimer} title="עצור טיימר">
+                            <Square className="ml-1 h-3 w-3" />{elapsed()}
+                          </Button>
+                        ) : t.status !== "done" && (
+                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0"
+                                  onClick={() => startTimer(t)} title="הפעל טיימר">
+                            <Play className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
+                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => openTime(t)} title="זמן עבודה">
+                          <Clock className="h-3.5 w-3.5" />
+                        </Button>
                         <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => openLog(t)} title="עדכונים">
                           <MessageSquarePlus className="h-3.5 w-3.5" />
                         </Button>
@@ -367,6 +583,23 @@ export default function TasksModule() {
               </select>
             </div>
 
+            <div className="rounded-md border p-3 space-y-2 bg-muted/30">
+              <Label className="text-sm">תזכורת (לא חובה)</Label>
+              <div className="grid grid-cols-2 gap-3">
+                <Input type="date" value={fRemindDate} onChange={(e) => setFRemindDate(e.target.value)} />
+                <Input type="time" value={fRemindTime} onChange={(e) => setFRemindTime(e.target.value)} />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                תקפוץ לפני תאריך היעד. למשל: משימה ליום חמישי, תזכורת למחר.
+              </p>
+              {fRemindDate && (
+                <Button variant="ghost" size="sm" className="h-7 text-xs"
+                        onClick={() => setFRemindDate("")}>
+                  <X className="ml-1 h-3 w-3" />בטל תזכורת
+                </Button>
+              )}
+            </div>
+
             <div className="space-y-1">
               <Label>הערות</Label>
               <Textarea value={fNotes} onChange={(e) => setFNotes(e.target.value)} placeholder="פרטים נוספים" />
@@ -411,6 +644,167 @@ export default function TasksModule() {
                 </div>
               ))}
             </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── Time log ───────────────────────────────── */}
+      <Dialog open={!!timeTarget} onOpenChange={(o) => !o && setTimeTarget(null)}>
+        <DialogContent className="w-[95vw] sm:max-w-lg max-h-[90vh] overflow-y-auto" dir="rtl">
+          <DialogHeader>
+            <DialogTitle>זמן עבודה — {timeTarget?.title}</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            <div className="rounded-md bg-muted/40 p-3 text-sm">
+              סה״כ הושקע: <strong>{fmtMinutes(minutesByTask[timeTarget?.id || ""] || 0)}</strong>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">תאריך</Label>
+                <Input type="date" value={manualDate} onChange={(e) => setManualDate(e.target.value)} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">דקות</Label>
+                <Input type="number" min="1" value={manualMinutes}
+                       onChange={(e) => setManualMinutes(e.target.value)} placeholder="60" />
+              </div>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">מי עבד</Label>
+              <select className="w-full h-10 rounded-md border bg-background px-3 text-sm"
+                      value={manualStaff} onChange={(e) => setManualStaff(e.target.value)}>
+                <option value="">ללא ציון</option>
+                {employees.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
+              </select>
+            </div>
+            <Input value={manualNote} onChange={(e) => setManualNote(e.target.value)} placeholder="הערה (לא חובה)" />
+            <Button onClick={saveManualTime} className="w-full">הוסף רישום ידני</Button>
+
+            <div className="space-y-1 pt-2 border-t">
+              {timeEntries.length === 0 && (
+                <p className="text-xs text-muted-foreground text-center py-4">אין רישומי זמן</p>
+              )}
+              {timeEntries.map((en) => (
+                <div key={en.id} className="flex items-center justify-between text-sm border rounded-md px-3 py-2">
+                  <div>
+                    <span className="font-medium">{fmtMinutes(en.minutes)}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {" · "}{en.entryDate}
+                      {en.employeeId ? ` · ${staffName(en.employeeId)}` : ""}
+                      {en.source === "timer" ? " · טיימר" : ""}
+                      {en.note ? ` · ${en.note}` : ""}
+                    </span>
+                  </div>
+                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive"
+                          onClick={() => removeTime(en.id)}>
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── Recurring templates ────────────────────── */}
+      <Dialog open={tplOpen} onOpenChange={setTplOpen}>
+        <DialogContent className="w-[95vw] sm:max-w-2xl max-h-[90vh] overflow-y-auto" dir="rtl">
+          <DialogHeader>
+            <DialogTitle>משימות חוזרות</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="rounded-md border p-3 space-y-3">
+              <Label className="font-medium">{tplEdit ? "עריכת תבנית" : "תבנית חדשה"}</Label>
+              <Input value={tTitle} onChange={(e) => setTTitle(e.target.value)} placeholder="כותרת המשימה" />
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">תדירות</Label>
+                  <select className="w-full h-10 rounded-md border bg-background px-3 text-sm"
+                          value={tFreq} onChange={(e) => setTFreq(e.target.value as Frequency)}>
+                    <option value="daily">כל יום</option>
+                    <option value="weekly">כל שבוע</option>
+                    <option value="monthly">כל חודש</option>
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  {tFreq === "weekly" && (<>
+                    <Label className="text-xs">ביום</Label>
+                    <select className="w-full h-10 rounded-md border bg-background px-3 text-sm"
+                            value={tDow} onChange={(e) => setTDow(Number(e.target.value))}>
+                      {DAYS.map((d, i) => <option key={i} value={i}>{d}</option>)}
+                    </select>
+                  </>)}
+                  {tFreq === "monthly" && (<>
+                    <Label className="text-xs">בתאריך (1-28)</Label>
+                    <Input type="number" min="1" max="28" value={tDom}
+                           onChange={(e) => setTDom(Number(e.target.value))} />
+                  </>)}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">דחיפות</Label>
+                  <select className="w-full h-10 rounded-md border bg-background px-3 text-sm"
+                          value={tPriority} onChange={(e) => setTPriority(e.target.value as TaskPriority)}>
+                    {PRIORITIES.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">אחראי</Label>
+                  <select className="w-full h-10 rounded-md border bg-background px-3 text-sm"
+                          value={tAssignee} onChange={(e) => setTAssignee(e.target.value)}>
+                    <option value="">ללא</option>
+                    <option value={ALL}>כולם</option>
+                    {employees.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex gap-2">
+                <Button onClick={saveTpl} className="flex-1">{tplEdit ? "עדכן" : "הוסף"}</Button>
+                {tplEdit && <Button variant="outline" onClick={resetTplForm}>ביטול</Button>}
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              {templates.length === 0 && (
+                <p className="text-xs text-muted-foreground text-center py-4">לא הוגדרו משימות חוזרות</p>
+              )}
+              {templates.map((tpl) => (
+                <div key={tpl.id} className="flex items-center justify-between border rounded-md px-3 py-2 gap-2">
+                  <div className="min-w-0">
+                    <p className={`text-sm font-medium truncate ${tpl.active ? "" : "line-through text-muted-foreground"}`}>
+                      {tpl.title}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {tplWhen(tpl)}
+                      {tpl.assignAll ? " · כולם" : tpl.assigneeId ? ` · ${staffName(tpl.assigneeId)}` : ""}
+                      {tpl.lastRunDate ? ` · נוצרה לאחרונה ${tpl.lastRunDate}` : " · טרם רצה"}
+                    </p>
+                  </div>
+                  <div className="flex gap-1 shrink-0">
+                    <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => toggleTpl(tpl)}>
+                      {tpl.active ? "השהה" : "הפעל"}
+                    </Button>
+                    <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => editTpl(tpl)}>
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive" onClick={() => removeTpl(tpl.id)}>
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <p className="text-xs text-muted-foreground">
+              התבניות נבדקות בכל כניסה למסך המשימות. תבנית שכבר רצה היום לא תיצור משימה כפולה.
+            </p>
           </div>
         </DialogContent>
       </Dialog>

@@ -22,6 +22,8 @@ export interface Task {
   assigneeId?: string;
   /** Targets the whole team; mutually exclusive with assigneeId. */
   assignAll?: boolean;
+  /** When to nudge about this task, ahead of dueDate. ISO timestamp. */
+  remindAt?: string;
   bachurId?: string;
   createdAt: string;
 }
@@ -86,6 +88,7 @@ function toTask(r: Record<string, unknown>): Task {
     completedAt: (r.completed_at as string) || undefined,
     assigneeId: (r.assignee_id as string) || undefined,
     assignAll: (r.assign_all as boolean) || false,
+    remindAt: (r.remind_at as string) || undefined,
     bachurId: (r.bachur_id as string) || undefined,
     createdAt: r.created_at as string,
   };
@@ -113,6 +116,10 @@ function toRow(t: Partial<TaskInput>) {
   if (t.durationMinutes !== undefined) row.duration_minutes = t.durationMinutes || null;
   if (t.assigneeId !== undefined) row.assignee_id = t.assigneeId || null;
   if (t.assignAll !== undefined) row.assign_all = !!t.assignAll;
+  if (t.remindAt !== undefined) {
+    row.remind_at = t.remindAt || null;
+    row.reminded_at = null; // a changed reminder must fire again
+  }
   if (t.bachurId !== undefined) row.bachur_id = t.bachurId || null;
   return row;
 }
@@ -196,4 +203,151 @@ export async function addTaskUpdate(
   if (error) { console.error("addTaskUpdate", error); return false; }
   if (newDueDate) await updateTask(taskId, { dueDate: newDueDate });
   return true;
+}
+
+// ─── Time tracking ────────────────────────────────────────────
+
+export interface TimeEntry {
+  id: string;
+  taskId?: string;
+  employeeId?: string;
+  entryDate: string;
+  startTime?: string;
+  endTime?: string;
+  minutes: number;
+  source: "manual" | "timer";
+  note?: string;
+  createdAt: string;
+}
+
+export async function fetchTimeEntries(taskId?: string): Promise<TimeEntry[]> {
+  let q = supabase.from("time_entries").select("*").order("entry_date", { ascending: false });
+  if (taskId) q = q.eq("task_id", taskId);
+  const { data, error } = await q;
+  if (error) { console.error("fetchTimeEntries", error); return []; }
+  return (data || []).map((r) => ({
+    id: r.id,
+    taskId: r.task_id || undefined,
+    employeeId: r.employee_id || undefined,
+    entryDate: r.entry_date,
+    startTime: r.start_time || undefined,
+    endTime: r.end_time || undefined,
+    minutes: r.minutes,
+    source: r.source,
+    note: r.note || undefined,
+    createdAt: r.created_at,
+  }));
+}
+
+/** Total minutes logged per task, for the estimated-vs-actual comparison. */
+export async function fetchMinutesByTask(): Promise<Record<string, number>> {
+  const { data, error } = await supabase.from("time_entries").select("task_id,minutes");
+  if (error) { console.error("fetchMinutesByTask", error); return {}; }
+  const totals: Record<string, number> = {};
+  for (const r of data || []) {
+    if (r.task_id) totals[r.task_id] = (totals[r.task_id] || 0) + r.minutes;
+  }
+  return totals;
+}
+
+export async function addTimeEntry(e: {
+  taskId?: string;
+  employeeId?: string;
+  entryDate: string;
+  minutes: number;
+  startTime?: string;
+  endTime?: string;
+  source?: "manual" | "timer";
+  note?: string;
+}): Promise<boolean> {
+  const { error } = await supabase.from("time_entries").insert({
+    task_id: e.taskId || null,
+    employee_id: e.employeeId || null,
+    entry_date: e.entryDate,
+    minutes: e.minutes,
+    start_time: e.startTime || null,
+    end_time: e.endTime || null,
+    source: e.source || "manual",
+    note: e.note || null,
+  });
+  if (error) { console.error("addTimeEntry", error); return false; }
+  return true;
+}
+
+export async function deleteTimeEntry(id: string): Promise<boolean> {
+  const { error } = await supabase.from("time_entries").delete().eq("id", id);
+  if (error) { console.error("deleteTimeEntry", error); return false; }
+  return true;
+}
+
+// ─── Recurring templates ──────────────────────────────────────
+
+export type Frequency = "daily" | "weekly" | "monthly";
+
+export interface TaskTemplate {
+  id: string;
+  title: string;
+  notes?: string;
+  priority: TaskPriority;
+  frequency: Frequency;
+  dayOfWeek?: number;
+  dayOfMonth?: number;
+  assigneeId?: string;
+  assignAll?: boolean;
+  active: boolean;
+  lastRunDate?: string;
+}
+
+export async function fetchTemplates(): Promise<TaskTemplate[]> {
+  const { data, error } = await supabase
+    .from("task_templates").select("*").order("created_at", { ascending: false });
+  if (error) { console.error("fetchTemplates", error); return []; }
+  return (data || []).map((r) => ({
+    id: r.id,
+    title: r.title,
+    notes: r.notes || undefined,
+    priority: r.priority,
+    frequency: r.frequency,
+    dayOfWeek: r.day_of_week ?? undefined,
+    dayOfMonth: r.day_of_month ?? undefined,
+    assigneeId: r.assignee_id || undefined,
+    assignAll: r.assign_all || false,
+    active: r.active,
+    lastRunDate: r.last_run_date || undefined,
+  }));
+}
+
+export async function saveTemplate(
+  t: Omit<TaskTemplate, "id" | "lastRunDate">,
+  id?: string,
+): Promise<boolean> {
+  const row = {
+    title: t.title,
+    notes: t.notes || null,
+    priority: t.priority,
+    frequency: t.frequency,
+    day_of_week: t.frequency === "weekly" ? t.dayOfWeek ?? 0 : null,
+    day_of_month: t.frequency === "monthly" ? t.dayOfMonth ?? 1 : null,
+    assignee_id: t.assigneeId || null,
+    assign_all: !!t.assignAll,
+    active: t.active,
+  };
+  const { error } = id
+    ? await supabase.from("task_templates").update(row).eq("id", id)
+    : await supabase.from("task_templates").insert(row);
+  if (error) { console.error("saveTemplate", error); return false; }
+  return true;
+}
+
+export async function deleteTemplate(id: string): Promise<boolean> {
+  const { error } = await supabase.from("task_templates").delete().eq("id", id);
+  if (error) { console.error("deleteTemplate", error); return false; }
+  return true;
+}
+
+/** Materialises every template that is due today. Idempotent. */
+export async function runDueTemplates(): Promise<number> {
+  const { data, error } = await supabase.rpc("run_due_task_templates");
+  if (error) { console.error("runDueTemplates", error); return 0; }
+  return (data as number) ?? 0;
 }
