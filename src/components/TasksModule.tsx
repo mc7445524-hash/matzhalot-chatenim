@@ -24,6 +24,8 @@ import {
 
 /** Sentinel for the "whole team" option in the assignee dropdown. */
 const ALL = "__all__";
+/** Filter-only sentinel for tasks nobody is responsible for. */
+const NONE = "__none__";
 
 const COLUMNS: { id: TaskStatus; label: string; tone: string }[] = [
   { id: "open",        label: "לביצוע",  tone: "border-slate-300" },
@@ -55,6 +57,8 @@ export default function TasksModule() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [updateCounts, setUpdateCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
+  /** "" = everyone's tasks, ALL = team-wide only, NONE = unassigned, else an id. */
+  const [filterStaff, setFilterStaff] = useState("");
 
   const [editOpen, setEditOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<Task | null>(null);
@@ -176,7 +180,15 @@ export default function TasksModule() {
     toast.success("העובד הוסר. המשימות וההיסטוריה שלו נשמרו");
   }
 
-  const overdue = tasks.filter(
+  // A team-wide task belongs to everyone, so it shows under each person too.
+  const visible = tasks.filter((t) => {
+    if (!filterStaff) return true;
+    if (filterStaff === ALL) return t.assignAll;
+    if (filterStaff === NONE) return !t.assignAll && !t.assigneeId;
+    return t.assigneeId === filterStaff || t.assignAll;
+  });
+
+  const overdue = visible.filter(
     (t) => t.status !== "done" && t.dueDate && t.dueDate < today()
   ).length;
 
@@ -199,12 +211,36 @@ export default function TasksModule() {
         </div>
       </div>
 
+      <div className="flex items-center gap-2 flex-wrap">
+        <Label className="text-sm">הצג משימות של:</Label>
+        <select
+          className="h-9 rounded-md border bg-background px-3 text-sm min-w-[160px]"
+          value={filterStaff}
+          onChange={(e) => setFilterStaff(e.target.value)}
+        >
+          <option value="">כל העובדים</option>
+          <option value={ALL}>משימות לכולם</option>
+          <option value={NONE}>ללא אחראי</option>
+          {employees.map((e) => (
+            <option key={e.id} value={e.id}>{e.name}</option>
+          ))}
+        </select>
+        {filterStaff && (
+          <Button variant="ghost" size="sm" className="h-8" onClick={() => setFilterStaff("")}>
+            <X className="ml-1 h-3 w-3" />נקה סינון
+          </Button>
+        )}
+        <span className="text-xs text-muted-foreground">
+          {visible.length} מתוך {tasks.length}
+        </span>
+      </div>
+
       {loading ? (
         <p className="text-center text-muted-foreground py-12">טוען…</p>
       ) : (
         <div className="grid gap-4 md:grid-cols-3">
           {COLUMNS.map((col) => {
-            const items = tasks.filter((t) => t.status === col.id);
+            const items = visible.filter((t) => t.status === col.id);
             return (
               <div key={col.id} className="space-y-2">
                 <div className={`flex items-center justify-between border-b-2 ${col.tone} pb-2`}>
