@@ -58,14 +58,17 @@ jobs:
         run: |
           URL=https://matzhalot.asher-weinberger.com
           sleep 15
-          curl -fsSL --compressed --max-time 30 "$URL" -o /tmp/live.html || { echo "site did not respond"; exit 1; }
-          grep -q "קול מצהלות חתנים" /tmp/live.html || { echo "page loaded but expected content is missing"; exit 1; }
+          # Ask for an uncompressed body: Cloudflare otherwise serves brotli,
+          # which curl saves verbatim and grep then refuses as a binary file.
+          curl -fsSL --max-time 30 -H 'Accept-Encoding: identity' "$URL" -o /tmp/live.html \
+            || { echo "site did not respond"; exit 1; }
+          grep -aq "קול מצהלות חתנים" /tmp/live.html || { echo "page loaded but expected content is missing"; exit 1; }
           # Asset basenames change between framework versions, so match any script.
-          JS=$(grep -o '/assets/[A-Za-z0-9._-]*\.js' /tmp/live.html | head -1)
+          JS=$(grep -ao '/assets/[A-Za-z0-9._-]*\.js' /tmp/live.html | head -1)
           [ -n "$JS" ] || { echo "no script referenced in HTML"; exit 1; }
           echo "checking $JS"
           curl -fsS --max-time 30 -o /dev/null "$URL$JS" || { echo "script $JS is missing (404)"; exit 1; }
-          CSS=$(grep -o '/assets/[A-Za-z0-9._-]*\.css' /tmp/live.html | head -1)
+          CSS=$(grep -ao '/assets/[A-Za-z0-9._-]*\.css' /tmp/live.html | head -1)
           if [ -n "$CSS" ]; then
             curl -fsS --max-time 30 -o /dev/null "$URL$CSS" \
               && echo "stylesheet $CSS OK" \
