@@ -20,13 +20,18 @@ jobs:
 
       - name: Security gate - TanStack XSS (CVE-2026-102989)
         run: |
-          V=$(npm ls @tanstack/start-server-core --all --json 2>/dev/null | grep -o '"version": *"[0-9.]*"' | head -1 | grep -o '[0-9][0-9.]*')
-          echo "resolved @tanstack/start-server-core = ${V:-NONE}"
-          [ -n "$V" ] || { echo "could not resolve version"; exit 1; }
           MIN=1.169.39
-          LOWEST=$(printf '%s\n%s\n' "$V" "$MIN" | sort -V | head -1)
-          [ "$LOWEST" = "$MIN" ] || { echo "VULNERABLE: $V is older than $MIN - refusing to deploy"; exit 1; }
-          echo "OK - patched"
+          # Read the version out of every installed copy, not from `npm ls --json`
+          # (its first "version" field is this project's own, which read as 1.0.0).
+          FOUND=$(find node_modules -path '*@tanstack/start-server-core/package.json' \
+                  -exec node -p "require('{}'.replace(/^/,process.cwd()+'/')).version" \; 2>/dev/null | sort -V -u)
+          echo "installed copies of @tanstack/start-server-core:"
+          echo "${FOUND:-  (none)}"
+          [ -n "$FOUND" ] || { echo "package not installed - nothing to check"; exit 0; }
+          OLDEST=$(echo "$FOUND" | head -1)
+          LOWEST=$(printf '%s\n%s\n' "$OLDEST" "$MIN" | sort -V | head -1)
+          [ "$LOWEST" = "$MIN" ] || { echo "VULNERABLE: $OLDEST is older than $MIN - refusing to deploy"; exit 1; }
+          echo "OK - oldest installed copy is $OLDEST (>= $MIN)"
 
       - name: Build from source
         run: |
