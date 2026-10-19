@@ -20,6 +20,8 @@ export interface Task {
   durationMinutes?: number;
   completedAt?: string;
   assigneeId?: string;
+  /** Targets the whole team; mutually exclusive with assigneeId. */
+  assignAll?: boolean;
   bachurId?: string;
   createdAt: string;
 }
@@ -83,6 +85,7 @@ function toTask(r: Record<string, unknown>): Task {
     durationMinutes: (r.duration_minutes as number) ?? undefined,
     completedAt: (r.completed_at as string) || undefined,
     assigneeId: (r.assignee_id as string) || undefined,
+    assignAll: (r.assign_all as boolean) || false,
     bachurId: (r.bachur_id as string) || undefined,
     createdAt: r.created_at as string,
   };
@@ -109,8 +112,18 @@ function toRow(t: Partial<TaskInput>) {
   if (t.dueTime !== undefined) row.due_time = t.dueTime || null;
   if (t.durationMinutes !== undefined) row.duration_minutes = t.durationMinutes || null;
   if (t.assigneeId !== undefined) row.assignee_id = t.assigneeId || null;
+  if (t.assignAll !== undefined) row.assign_all = !!t.assignAll;
   if (t.bachurId !== undefined) row.bachur_id = t.bachurId || null;
   return row;
+}
+
+/** How many notes each task carries, so the board can flag them. */
+export async function fetchUpdateCounts(): Promise<Record<string, number>> {
+  const { data, error } = await supabase.from("task_updates").select("task_id");
+  if (error) { console.error("fetchUpdateCounts", error); return {}; }
+  const counts: Record<string, number> = {};
+  for (const r of data || []) counts[r.task_id] = (counts[r.task_id] || 0) + 1;
+  return counts;
 }
 
 export async function createTask(t: TaskInput): Promise<Task | null> {

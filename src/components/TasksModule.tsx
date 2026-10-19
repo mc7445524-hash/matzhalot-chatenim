@@ -19,8 +19,11 @@ import {
   type Task, type TaskStatus, type TaskPriority, type Employee, type TaskUpdate,
   fetchTasks, createTask, updateTask, setTaskStatus, deleteTask,
   fetchEmployees, addEmployee, archiveEmployee,
-  fetchTaskUpdates, addTaskUpdate,
+  fetchTaskUpdates, addTaskUpdate, fetchUpdateCounts,
 } from "@/lib/tasks";
+
+/** Sentinel for the "whole team" option in the assignee dropdown. */
+const ALL = "__all__";
 
 const COLUMNS: { id: TaskStatus; label: string; tone: string }[] = [
   { id: "open",        label: "לביצוע",  tone: "border-slate-300" },
@@ -50,6 +53,7 @@ export default function TasksModule() {
   const { bachurim } = useData();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
+  const [updateCounts, setUpdateCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
 
   const [editOpen, setEditOpen] = useState(false);
@@ -73,9 +77,10 @@ export default function TasksModule() {
   const [fBachur, setFBachur] = useState("");
 
   const refresh = useCallback(async () => {
-    const [t, e] = await Promise.all([fetchTasks(), fetchEmployees()]);
+    const [t, e, c] = await Promise.all([fetchTasks(), fetchEmployees(), fetchUpdateCounts()]);
     setTasks(t);
     setEmployees(e);
+    setUpdateCounts(c);
     setLoading(false);
   }, []);
 
@@ -100,7 +105,7 @@ export default function TasksModule() {
     setFDate(t.dueDate || "");
     setFTime(t.dueTime || "");
     setFPriority(t.priority);
-    setFAssignee(t.assigneeId || "");
+    setFAssignee(t.assignAll ? ALL : t.assigneeId || "");
     setFBachur(t.bachurId || "");
     setEditOpen(true);
   }
@@ -114,7 +119,8 @@ export default function TasksModule() {
       priority: fPriority,
       dueDate: fDate,
       dueTime: fTime,
-      assigneeId: fAssignee,
+      assigneeId: fAssignee === ALL ? "" : fAssignee,
+      assignAll: fAssignee === ALL,
       bachurId: fBachur,
     };
     const ok = editTarget
@@ -233,8 +239,16 @@ export default function TasksModule() {
                             {t.dueDate}{t.dueTime ? ` ${t.dueTime.slice(0, 5)}` : ""}
                           </span>
                         )}
-                        {t.assigneeId && <span className="text-muted-foreground">{staffName(t.assigneeId)}</span>}
+                        {t.assignAll
+                          ? <span className="font-medium text-indigo-600">כולם</span>
+                          : t.assigneeId && <span className="text-muted-foreground">{staffName(t.assigneeId)}</span>}
                         {t.bachurId && <span className="text-primary">{bachurName(t.bachurId)}</span>}
+                        {updateCounts[t.id] > 0 && (
+                          <span className="flex items-center gap-1 text-sky-700 font-medium">
+                            <MessageSquarePlus className="h-3 w-3" />
+                            {updateCounts[t.id]} עדכונים
+                          </span>
+                        )}
                       </div>
 
                       <div className="flex flex-wrap gap-1 pt-1">
@@ -302,6 +316,7 @@ export default function TasksModule() {
                 <select className="w-full h-10 rounded-md border bg-background px-3 text-sm"
                         value={fAssignee} onChange={(e) => setFAssignee(e.target.value)}>
                   <option value="">ללא</option>
+                  <option value={ALL}>כולם</option>
                   {employees.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
                 </select>
               </div>
