@@ -7,7 +7,7 @@
     "build": "vite build"
   },
   "devDependencies": {
-    "@tanstack/react-start": "1.167.16",
+    "@tanstack/react-start": "1.168.60",
     "@tailwindcss/vite": "4.2.2",
     "@vitejs/plugin-react": "5.2.0",
     "tailwindcss": "4.2.2",
@@ -17,14 +17,9 @@
     "vite-tsconfig-paths": "6.1.1"
   },
   "dependencies": {
-    "h3-v2": "latest",
-    "seroval": "1.5.1",
-    "seroval-plugins": "1.5.1",
     "react": "19.2.4",
     "react-dom": "19.2.4",
-    "@tanstack/router-core": "1.168.9",
-    "@tanstack/history": "1.161.6",
-    "@tanstack/react-router": "1.168.10",
+    "@tanstack/react-router": "1.170.41",
     "@supabase/supabase-js": "2.103.0",
     "@lovable.dev/email-js": "0.0.4",
     "@lovable.dev/webhooks-js": "0.0.1",
@@ -71,10 +66,5 @@
     "sonner": "2.0.7",
     "tailwind-merge": "3.5.0",
     "xlsx": "0.18.5"
-  },
-  "overrides": {
-    "@tanstack/router-core": "1.168.9",
-    "seroval": "1.5.1",
-    "seroval-plugins": "1.5.1"
   }
 }

@@ -18,6 +18,16 @@ jobs:
       - name: Install
         run: npm install
 
+      - name: Security gate - TanStack XSS (CVE-2026-102989)
+        run: |
+          V=$(npm ls @tanstack/start-server-core --all --json 2>/dev/null | grep -o '"version": *"[0-9.]*"' | head -1 | grep -o '[0-9][0-9.]*')
+          echo "resolved @tanstack/start-server-core = ${V:-NONE}"
+          [ -n "$V" ] || { echo "could not resolve version"; exit 1; }
+          MIN=1.169.39
+          LOWEST=$(printf '%s\n%s\n' "$V" "$MIN" | sort -V | head -1)
+          [ "$LOWEST" = "$MIN" ] || { echo "VULNERABLE: $V is older than $MIN - refusing to deploy"; exit 1; }
+          echo "OK - patched"
+
       - name: Build from source
         run: |
           rm -rf dist
@@ -38,3 +48,18 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: b3a00d289294f2a00926728f8db96d34
+
+      - name: Smoke test the live site
+        run: |
+          URL=https://matzhalot.asher-weinberger.com
+          sleep 15
+          HTML=$(curl -fsSL --max-time 30 "$URL") || { echo "site did not respond"; exit 1; }
+          echo "$HTML" | grep -q "קול מצהלות חתנים" || { echo "page loaded but expected content is missing"; exit 1; }
+          JS=$(echo "$HTML" | grep -o '/assets/main-[A-Za-z0-9_-]*\.js' | head -1)
+          [ -n "$JS" ] || { echo "no main script referenced in HTML"; exit 1; }
+          curl -fsS --max-time 30 -o /dev/null "$URL$JS" || { echo "main script $JS is missing (404)"; exit 1; }
+          CSS=$(echo "$HTML" | grep -o '/assets/styles-[A-Za-z0-9_-]*\.css' | head -1)
+          if [ -n "$CSS" ]; then
+            curl -fsS --max-time 30 -o /dev/null "$URL$CSS" && echo "stylesheet OK" || echo "WARNING: stylesheet $CSS is 404 (cosmetic flash on first paint)"
+          fi
+          echo "SMOKE TEST PASSED - site is live and serving its assets"
