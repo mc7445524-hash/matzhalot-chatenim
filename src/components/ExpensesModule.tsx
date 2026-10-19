@@ -355,8 +355,11 @@ export default function ExpensesModule() {
       let failed = 0;
       for (const e of matches) {
         const ext = (e.invoiceFileName?.split(".").pop() || "bin").toLowerCase();
-        const safeContact = (e.contactPerson || "ללא").replace(/[\\/:*?"<>|]/g, "_");
-        const fname = `${e.date}_${safeContact}_${e.amount}.${ext}`;
+        const clean = (s: string) => s.replace(/[\\/:*?"<>|]/g, "_").trim();
+        // The notes field is what the user typed to identify this expense, so
+        // it names the file. Fall back to contact+amount when it is empty.
+        const label = clean(e.notes || "") || `${clean(e.contactPerson || "ללא")}_${e.amount}`;
+        const fname = `${e.date}_${label}.${ext}`;
         if (e.invoiceFileData) {
           zip.file(fname, e.invoiceFileData.split(",")[1] || "", { base64: true });
         } else {
@@ -378,8 +381,8 @@ export default function ExpensesModule() {
         f.getDate() === 1 &&
         t.getDate() === new Date(t.getFullYear(), t.getMonth() + 1, 0).getDate();
       const zipName = isFullMonth
-        ? `חשבוניות חודש ${HEB_MONTHS[f.getMonth()]} ${f.getFullYear()}.zip`
-        : `חשבוניות ${downloadFrom} - ${downloadTo}.zip`;
+        ? `חשבוניות מצהלות חודש ${HEB_MONTHS[f.getMonth()]} ${f.getFullYear()}.zip`
+        : `חשבוניות מצהלות ${downloadFrom} - ${downloadTo}.zip`;
 
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -648,7 +651,7 @@ export default function ExpensesModule() {
 
       {/* Add dialog */}
       <Dialog open={addOpen} onOpenChange={(o) => { setAddOpen(o); if (!o) setEditTarget(null); }}>
-        <DialogContent className="sm:max-w-md max-h-[85vh] overflow-y-auto" dir="rtl">
+        <DialogContent className="w-[95vw] sm:max-w-2xl max-h-[90vh] overflow-y-auto" dir="rtl">
           <DialogHeader>
             <DialogTitle>{editTarget ? "עריכת הוצאה" : "הוספת הוצאה"}</DialogTitle>
             <DialogDescription>{editTarget ? "עדכן את פרטי ההוצאה" : "הזן פרטי הוצאה חדשה"}</DialogDescription>
@@ -752,6 +755,9 @@ export default function ExpensesModule() {
             <div>
               <Label>הערות</Label>
               <Textarea value={formNotes} onChange={(e) => setFormNotes(e.target.value)} placeholder="תיאור ההוצאה" />
+              <p className="text-xs text-muted-foreground">
+                הטקסט שתכתוב כאן יהיה שם קובץ החשבונית בהורדה
+              </p>
             </div>
           </div>
           <DialogFooter className="gap-2 sm:gap-0">
