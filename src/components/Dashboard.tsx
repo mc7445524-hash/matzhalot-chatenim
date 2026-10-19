@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import DashboardTasks from "@/components/DashboardTasks";
 import {
   Wallet, Snowflake, Receipt, ClipboardList, Scale, Download,
 } from "lucide-react";
@@ -132,7 +133,9 @@ export default function Dashboard() {
         <h2 className="text-2xl font-bold text-foreground">לוח בקרה</h2>
         <MasterExcelImport />
       </div>
-      <p className="text-muted-foreground mb-8">סקירה כללית של נתוני העמותה</p>
+      <p className="text-muted-foreground mb-6">סקירה כללית של נתוני העמותה</p>
+
+      <DashboardTasks />
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-5">
         {cards.map((c) => {
