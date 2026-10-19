@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Plus, Trash2, Pencil, Users, X, MessageSquarePlus, Check,
   Play, Square, Clock, Repeat,
@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { useData } from "@/contexts/DataContext";
+import { useFocusRow } from "@/hooks/useFocusRow";
 import {
   type Task, type TaskStatus, type TaskPriority, type Employee, type TaskUpdate,
   fetchTasks, createTask, updateTask, setTaskStatus, deleteTask,
@@ -80,6 +81,7 @@ export default function TasksModule() {
     try { return JSON.parse(localStorage.getItem(TIMER_KEY) || "null"); } catch { return null; }
   });
   const [tick, setTick] = useState(0);
+  const tasksRef = useRef<Task[]>([]);
 
   const [timeTarget, setTimeTarget] = useState<Task | null>(null);
   const [timeEntries, setTimeEntries] = useState<TimeEntry[]>([]);
@@ -120,11 +122,18 @@ export default function TasksModule() {
   const [fRemindDate, setFRemindDate] = useState("");
   const [fRemindTime, setFRemindTime] = useState("09:00");
 
+  // Arriving from a bachur's panel: scroll the task into view and open it.
+  const { highlightedId, registerRow } = useFocusRow("tasks", (id) => {
+    const t = tasksRef.current.find((x) => x.id === id);
+    if (t) openEdit(t);
+  });
+
   const refresh = useCallback(async () => {
     const [t, e, c, m] = await Promise.all([
       fetchTasks(), fetchEmployees(), fetchUpdateCounts(), fetchMinutesByTask(),
     ]);
     setTasks(t);
+    tasksRef.current = t;
     setEmployees(e);
     setUpdateCounts(c);
     setMinutesByTask(m);
@@ -444,7 +453,13 @@ export default function TasksModule() {
                 )}
 
                 {items.map((t) => (
-                  <Card key={t.id} className="shadow-sm">
+                  <Card
+                    key={t.id}
+                    ref={registerRow(t.id) as never}
+                    className={`shadow-sm transition ${
+                      highlightedId === t.id ? "ring-2 ring-primary ring-offset-2" : ""
+                    }`}
+                  >
                     <CardContent className="p-3 space-y-2">
                       <div className="flex items-start justify-between gap-2">
                         <span className="font-medium flex-1">{t.title}</span>

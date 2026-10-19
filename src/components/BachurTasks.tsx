@@ -1,7 +1,13 @@
 import { useEffect, useState } from "react";
-import { ClipboardList } from "lucide-react";
+import { ClipboardList, ArrowLeft, Check, Play } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { fetchTasks, fetchEmployees, type Task, type Employee } from "@/lib/tasks";
+import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
+import { useNavigation } from "@/contexts/NavigationContext";
+import {
+  fetchTasks, fetchEmployees, setTaskStatus,
+  type Task, type Employee,
+} from "@/lib/tasks";
 
 const STATUS_LABEL: Record<Task["status"], string> = {
   open: "לביצוע",
@@ -21,6 +27,7 @@ function today() {
 
 /** The tasks attached to one bachur, shown inside his detail panel. */
 export default function BachurTasks({ bachurId }: { bachurId: string }) {
+  const { navigateTo } = useNavigation();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
@@ -38,6 +45,12 @@ export default function BachurTasks({ bachurId }: { bachurId: string }) {
 
   const staffName = (id?: string) => employees.find((e) => e.id === id)?.name || "";
   const open = tasks.filter((t) => t.status !== "done").length;
+
+  async function move(id: string, status: Task["status"]) {
+    if (!(await setTaskStatus(id, status))) { toast.error("העדכון נכשל"); return; }
+    setTasks((cur) => cur.map((t) => (t.id === id ? { ...t, status } : t)));
+    toast.success(status === "done" ? "המשימה הושלמה" : "המשימה בתהליך");
+  }
 
   if (loading) return null;
 
@@ -58,19 +71,46 @@ export default function BachurTasks({ bachurId }: { bachurId: string }) {
           {tasks.map((t) => {
             const late = t.status !== "done" && t.dueDate && t.dueDate < today();
             return (
-              <div key={t.id} className="flex items-start justify-between gap-2 border rounded-md px-3 py-2">
-                <div className="min-w-0">
-                  <p className="text-sm font-medium">{t.title}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {t.dueDate && (
-                      <span className={late ? "text-red-600 font-medium" : ""}>{t.dueDate}</span>
-                    )}
-                    {t.assignAll ? " · כולם" : t.assigneeId ? ` · ${staffName(t.assigneeId)}` : ""}
-                  </p>
+              <div key={t.id} className="border rounded-md px-3 py-2 space-y-2">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium">{t.title}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {t.dueDate && (
+                        <span className={late ? "text-red-600 font-medium" : ""}>{t.dueDate}</span>
+                      )}
+                      {t.assignAll ? " · כולם" : t.assigneeId ? ` · ${staffName(t.assigneeId)}` : ""}
+                    </p>
+                  </div>
+                  <Badge variant="outline" className={`${STATUS_CLS[t.status]} shrink-0`}>
+                    {STATUS_LABEL[t.status]}
+                  </Badge>
                 </div>
-                <Badge variant="outline" className={`${STATUS_CLS[t.status]} shrink-0`}>
-                  {STATUS_LABEL[t.status]}
-                </Badge>
+
+                <div className="flex flex-wrap gap-1">
+                  {t.status !== "in_progress" && t.status !== "done" && (
+                    <Button size="sm" variant="outline" className="h-7 text-xs"
+                            onClick={() => move(t.id, "in_progress")}>
+                      <Play className="ml-1 h-3 w-3" />בתהליך
+                    </Button>
+                  )}
+                  {t.status !== "done" && (
+                    <Button size="sm" variant="outline" className="h-7 text-xs"
+                            onClick={() => move(t.id, "done")}>
+                      <Check className="ml-1 h-3 w-3" />הושלם
+                    </Button>
+                  )}
+                  {t.status === "done" && (
+                    <Button size="sm" variant="ghost" className="h-7 text-xs"
+                            onClick={() => move(t.id, "open")}>
+                      החזר לביצוע
+                    </Button>
+                  )}
+                  <Button size="sm" variant="ghost" className="h-7 text-xs text-primary"
+                          onClick={() => navigateTo("tasks", t.id, { edit: true })}>
+                    פתח במשימות<ArrowLeft className="mr-1 h-3 w-3" />
+                  </Button>
+                </div>
               </div>
             );
           })}
