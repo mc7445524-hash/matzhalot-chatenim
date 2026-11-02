@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import DashboardTasks from "@/components/DashboardTasks";
 import {
-  Wallet, Snowflake, Receipt, ClipboardList, Scale, Download,
+  Wallet, Snowflake, Receipt, ClipboardList, Scale, Download, ChevronDown,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import { useData } from "@/contexts/DataContext";
@@ -14,6 +14,8 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -103,7 +105,7 @@ export default function Dashboard() {
 
   // Card A inner state
   const [aMode, setAMode] = useState<null | "bachurim" | "other">(null);
-  const [aBachurFilter, setABachurFilter] = useState<string>("eligible");
+  const [aBachurFilter, setABachurFilter] = useState<string[]>(["eligible"]);
   const [aOtherFilter, setAOtherFilter] = useState<string>("");
 
   const closeAll = () => { setOpenCard(null); setAMode(null); setABachurFilter("eligible"); setAOtherFilter(""); };
@@ -407,24 +409,41 @@ function BachurimTable({ rows, columns, exportName, onRowClick }: {
   );
 }
 
+const BACHUR_CATEGORIES = [
+  { id: "eligible", label: "זכאי (הגיע למינימום)" },
+  { id: "close",    label: "קרוב לסל (80%+)" },
+  { id: "far",      label: "רחוק מהסל (מתחת ל-80%)" },
+  { id: "married",  label: "התחתן" },
+] as const;
+
+/** The four categories are mutually exclusive, so OR-ing them cannot
+ *  double-count a bachur — the totals below the table rely on that. */
+function bachurCategory(b: any, min: number) {
+  if (b.married) return "married";
+  const t = bachurTotal(b);
+  if (t >= min) return "eligible";
+  if (t >= 0.8 * min) return "close";
+  return "far";
+}
+
 function CardABachurim({ bachurim, min, filter, setFilter, onBack, onRowClick }: {
   bachurim: any[]; min: number;
-  filter: string; setFilter: (s: string) => void; onBack: () => void;
+  filter: string[]; setFilter: (s: string[]) => void; onBack: () => void;
   onRowClick?: (id: string) => void;
 }) {
   const filtered = useMemo(() => {
-    return bachurim.filter((b) => {
-      const t = bachurTotal(b);
-      switch (filter) {
-        case "all": return true;
-        case "eligible": return !b.married && t >= min;
-        case "close": return !b.married && t >= 0.8 * min && t < min;
-        case "far": return !b.married && t < 0.8 * min;
-        case "married": return b.married;
-        default: return false;
-      }
-    });
+    // No selection means no restriction, matching the old "בחר הכול".
+    if (filter.length === 0) return bachurim;
+    return bachurim.filter((b) => filter.includes(bachurCategory(b, min)));
   }, [bachurim, filter, min]);
+
+  const toggle = (id: string) =>
+    setFilter(filter.includes(id) ? filter.filter((f) => f !== id) : [...filter, id]);
+
+  const filterLabel =
+    filter.length === 0 ? "כל הבחורים"
+    : filter.length === 1 ? BACHUR_CATEGORIES.find((c) => c.id === filter[0])?.label ?? ""
+    : `${filter.length} קטגוריות`;
 
   const rows = filtered.map((b) => ({
     id: b.id as string,
@@ -439,19 +458,45 @@ function CardABachurim({ bachurim, min, filter, setFilter, onBack, onRowClick }:
     <div className="space-y-4">
       <div className="flex items-center gap-2 flex-wrap">
         <Button variant="outline" size="sm" onClick={onBack}>← חזור</Button>
-        <Select value={filter} onValueChange={setFilter}>
-          <SelectTrigger className="w-[200px]"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">בחר הכול</SelectItem>
-            <SelectItem value="eligible">זכאי (הגיע למינימום)</SelectItem>
-            <SelectItem value="close">קרוב לסל (80%+)</SelectItem>
-            <SelectItem value="far">רחוק מהסל (מתחת ל-80%)</SelectItem>
-            <SelectItem value="married">התחתן</SelectItem>
-          </SelectContent>
-        </Select>
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button variant="outline" size="sm" className="w-[220px] justify-between font-normal">
+              <span className="truncate">{filterLabel}</span>
+              <ChevronDown className="h-4 w-4 opacity-50 shrink-0" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-[260px] p-2" align="start" dir="rtl">
+            <button
+              type="button"
+              className="w-full text-right text-sm px-2 py-1.5 rounded hover:bg-accent"
+              onClick={() =>
+                setFilter(
+                  filter.length === BACHUR_CATEGORIES.length
+                    ? []
+                    : BACHUR_CATEGORIES.map((c) => c.id as string)
+                )
+              }
+            >
+              {filter.length === BACHUR_CATEGORIES.length ? "נקה הכול" : "בחר הכול"}
+            </button>
+            <div className="h-px bg-border my-1" />
+            {BACHUR_CATEGORIES.map((c) => (
+              <label
+                key={c.id}
+                className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-accent cursor-pointer"
+              >
+                <Checkbox
+                  checked={filter.includes(c.id)}
+                  onCheckedChange={() => toggle(c.id)}
+                />
+                <span className="text-sm">{c.label}</span>
+              </label>
+            ))}
+          </PopoverContent>
+        </Popover>
         <div className="ms-auto">
           <ExportButton
-            onClick={() => exportToExcel(`הכנסות-בחורים-${filter}`,
+            onClick={() => exportToExcel(`הכנסות-בחורים-${filter.length ? filter.join("-") : "הכל"}`,
               ["שם", "סכום (עד מינימום)", "סכום בפועל"],
               [
                 [`סה"כ (${rows.length})`, sumAmount, sumActual],
