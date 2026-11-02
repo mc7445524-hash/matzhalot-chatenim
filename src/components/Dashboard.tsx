@@ -454,6 +454,21 @@ function CardABachurim({ bachurim, min, filter, setFilter, onBack, onRowClick }:
   const sumAmount = rows.reduce((s, r) => s + r.amount, 0);
   const sumActual = rows.reduce((s, r) => s + r.actual, 0);
 
+  // The headline "הכנסות בחורים" counts only the unmarried, so show that
+  // subtraction explicitly instead of making the reader infer it.
+  const breakdown = useMemo(() => {
+    const capped = (b: any) => Math.min(bachurTotal(b), min);
+    const marriedList = bachurim.filter((b) => b.married);
+    return {
+      allCount: bachurim.length,
+      allSum: bachurim.reduce((s, b) => s + capped(b), 0),
+      marriedCount: marriedList.length,
+      marriedSum: marriedList.reduce((s, b) => s + capped(b), 0),
+    };
+  }, [bachurim, min]);
+  const netCount = breakdown.allCount - breakdown.marriedCount;
+  const netSum = breakdown.allSum - breakdown.marriedSum;
+
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2 flex-wrap">
@@ -503,6 +518,21 @@ function CardABachurim({ bachurim, min, filter, setFilter, onBack, onRowClick }:
                 ...rows.map((r) => [r.name, r.amount, r.actual]),
               ])}
           />
+        </div>
+      </div>
+
+      <div className="rounded-lg border bg-muted/30 p-3 text-sm">
+        <div className="flex items-center justify-between py-1">
+          <span className="text-muted-foreground">סה"כ הכול ({breakdown.allCount})</span>
+          <span className="font-medium tabular-nums">{fmt(breakdown.allSum)}</span>
+        </div>
+        <div className="flex items-center justify-between py-1 text-muted-foreground">
+          <span>פחות שהתחתנו ({breakdown.marriedCount})</span>
+          <span className="tabular-nums">−{fmt(breakdown.marriedSum)}</span>
+        </div>
+        <div className="flex items-center justify-between pt-2 mt-1 border-t font-semibold">
+          <span>סה"כ ({netCount})</span>
+          <span className="tabular-nums">{fmt(netSum)}</span>
         </div>
       </div>
 
