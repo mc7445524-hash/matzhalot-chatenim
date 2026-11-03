@@ -18,7 +18,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import * as XLSX from "xlsx";
-import { fetchActivityLog, type ActivityLogEntry } from "@/lib/db";
+import { fetchActivityLog, CLOSE_TO_BASKET_RATIO, type ActivityLogEntry } from "@/lib/db";
 
 // ─── Data types ───────────────────────────────────────────────
 interface Bachur {
@@ -248,7 +248,7 @@ function Report2Bachurim({ bachurim, minimum }: { bachurim: Bachur[]; minimum: n
         const pct = minimum > 0 ? (total / minimum) * 100 : 0;
         let status = "עוד רחוק";
         if (total >= minimum) status = "זכאי";
-        else if (pct >= 70) status = "קרוב לסל";
+        else if (total >= CLOSE_TO_BASKET_RATIO * minimum) status = "קרוב לסל";
         return { ...b, total, pct, status };
       })
       .sort((a, b) => b.total - a.total);
@@ -325,13 +325,20 @@ function Report3Funds({ incomes, expenses, bachurim }: { incomes: Income[]; expe
     const orgFund = totalIncomes - expAmuta;
 
     const totalBank = basketFund + orgFund;
-    const balanced = totalActiveBachurimIncome === basketFund + expSalim;
+
+    // A fund is overdrawn when it paid out more than it took in. Checking
+    // each one separately matters: a healthy org fund can mask a basket
+    // fund in the red, because only their sum reaches the bank total.
+    const shortfalls: { name: string; amount: number }[] = [];
+    if (basketFund < 0) shortfalls.push({ name: "קופת סלים", amount: -basketFund });
+    if (orgFund < 0) shortfalls.push({ name: "קופת עמותה", amount: -orgFund });
 
     return {
       basketInc: totalActiveBachurimIncome, basketExp: expSalim, basketFund,
       orgInc: totalIncomes, orgExp: expAmuta, orgFund,
-      totalBank, balanced,
-      diff: totalActiveBachurimIncome - basketFund,
+      totalBank,
+      balanced: shortfalls.length === 0,
+      shortfalls,
     };
   }, [incomes, expenses, bachurim]);
 
@@ -344,7 +351,9 @@ function Report3Funds({ incomes, expenses, bachurim }: { incomes: Income[]; expe
         <tr><td><strong>קופת עמותה</strong></td><td>${fmt(data.orgInc)} ₪</td><td>${fmt(data.orgExp)} ₪</td><td>${fmt(data.orgFund)} ₪</td></tr>
         <tr><td><strong>סה"כ בנק</strong></td><td colspan="2"></td><td><strong>${fmt(data.totalBank)} ₪</strong></td></tr>
       </table>
-      <p class="${data.balanced ? 'green' : 'red'}">${data.balanced ? "✅ החשבון מאוזן" : `⚠️ יש הפרש של ${fmt(data.diff)} ₪`}</p>
+      <p class="${data.balanced ? 'green' : 'red'}">${data.balanced
+        ? "✅ שתי הקופות בפלוס"
+        : `⚠️ ${data.shortfalls.map((s) => `${s.name} בחוסר של ${fmt(s.amount)} ₪`).join(", ")}`}</p>
     `);
   }
 
@@ -372,9 +381,11 @@ function Report3Funds({ incomes, expenses, bachurim }: { incomes: Income[]; expe
       <Card className={data.balanced ? "border-green-500" : "border-red-500"}>
         <CardContent className="p-4 flex items-center gap-2">
           {data.balanced ? (
-            <><ShieldCheck className="h-5 w-5 text-green-600" /><span className="text-green-600 font-medium">✅ החשבון מאוזן</span></>
+            <><ShieldCheck className="h-5 w-5 text-green-600" /><span className="text-green-600 font-medium">✅ שתי הקופות בפלוס</span></>
           ) : (
-            <><AlertTriangle className="h-5 w-5 text-red-600" /><span className="text-red-600 font-medium">⚠️ יש הפרש של {fmt(data.diff)} ₪ – יש לבדוק</span></>
+            <><AlertTriangle className="h-5 w-5 text-red-600" /><span className="text-red-600 font-medium">
+              ⚠️ {data.shortfalls.map((s) => `${s.name} בחוסר של ${fmt(s.amount)} ₪`).join(", ")} – יש לבדוק
+            </span></>
           )}
         </CardContent>
       </Card>

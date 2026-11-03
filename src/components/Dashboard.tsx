@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
+import { CLOSE_TO_BASKET_RATIO } from "@/lib/db";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -58,6 +59,15 @@ export default function Dashboard() {
   const basketCost = globalSettings.basketCost || 0;
   const amutaSupplement = Math.max(0, basketCost - min);
 
+  /** Every askan income is written twice: once to askanimIncomes and once,
+   *  mirrored, to incomes under this category. Counting both would inflate
+   *  the income total, so the mirrors are dropped and askanimIncomes is the
+   *  single source for that money. */
+  const generalIncomes = useMemo(
+    () => incomes.filter((i: any) => i.category !== "פרויקט עסקנים"),
+    [incomes]
+  );
+
   // ── derived per-bachur stats ────────────────────────────────
   const stats = useMemo(() => {
     const active = bachurim.filter((b) => !b.married);
@@ -70,7 +80,7 @@ export default function Dashboard() {
       (s, b) => s + Math.max(0, bachurTotal(b) - min), 0
     );
 
-    const incomesSum = incomes.reduce((s, i) => s + (i.amount || 0), 0);
+    const incomesSum = generalIncomes.reduce((s, i) => s + (i.amount || 0), 0);
     const askanimSum = askanimIncomes.reduce((s, i) => s + (i.amount || 0), 0);
 
     const otherIncomes = incomesSum + askanimSum + excessSum;
@@ -95,7 +105,7 @@ export default function Dashboard() {
       eligible, frozenFromBachurim, frozenFromAmuta, frozenTotal,
       totalExpenses, expectedList, expectedTotal,
     };
-  }, [bachurim, incomes, askanimIncomes, expenses, min, basketCost, amutaSupplement]);
+  }, [bachurim, generalIncomes, askanimIncomes, expenses, min, basketCost, amutaSupplement]);
 
   const balance = stats.totalIncome - stats.totalExpenses;
   const balanceWithExpected = balance - stats.expectedTotal;
@@ -214,7 +224,7 @@ export default function Dashboard() {
 
           {aMode === "other" && (
             <CardAOther
-              incomes={incomes} askanimIncomes={askanimIncomes}
+              incomes={generalIncomes} askanimIncomes={askanimIncomes}
               bachurim={bachurim} fundraisers={fundraisers} min={min}
               filter={aOtherFilter} setFilter={setAOtherFilter}
               onBack={() => setAMode(null)}
@@ -422,7 +432,7 @@ function bachurCategory(b: any, min: number) {
   if (b.married) return "married";
   const t = bachurTotal(b);
   if (t >= min) return "eligible";
-  if (t >= 0.8 * min) return "close";
+  if (t >= CLOSE_TO_BASKET_RATIO * min) return "close";
   return "far";
 }
 

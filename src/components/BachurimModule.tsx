@@ -32,6 +32,7 @@ import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import { useFocusRow } from "@/hooks/useFocusRow";
 import MasterExcelImport from "@/components/MasterExcelImport";
+import { CLOSE_TO_BASKET_RATIO } from "@/lib/db";
 
 // ─── Types ────────────────────────────────────────────────────
 export interface Outing {
@@ -600,7 +601,7 @@ export default function BachurimModule() {
     const income = totalIncome(b);
     const pct = minimum > 0 ? income / minimum : 0;
     if (income >= minimum) return <Badge className="bg-green-600 text-white">זכאי</Badge>;
-    if (pct >= 0.8) return <Badge className="bg-orange-500 text-white">קרוב לסל!</Badge>;
+    if (pct >= CLOSE_TO_BASKET_RATIO) return <Badge className="bg-orange-500 text-white">קרוב לסל!</Badge>;
     return <Badge variant="destructive">לא זכאי</Badge>;
   };
 
@@ -1041,7 +1042,7 @@ export default function BachurimModule() {
                   <div>
                     {income >= minimum ? (
                       <div className="p-3 rounded-lg bg-green-50 border border-green-200 text-green-800 text-sm font-medium">✅ זכאי לסל!</div>
-                    ) : pct >= 0.8 ? (
+                    ) : pct >= CLOSE_TO_BASKET_RATIO ? (
                       <div className="p-3 rounded-lg bg-orange-50 border border-orange-200 text-orange-800 text-sm font-medium">⚠️ קרוב לסל! ({Math.round(pct * 100)}%)</div>
                     ) : (
                       <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-800 text-sm font-medium">❌ לא זכאי ({fmtCurrency(minimum - income)} חסרים)</div>

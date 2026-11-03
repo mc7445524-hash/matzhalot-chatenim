@@ -1,5 +1,10 @@
 import { supabase } from "@/integrations/supabase/client";
 
+/** Share of the minimum at which a bachur counts as "קרוב לסל".
+ *  Defined once so the dashboard, the bachurim list and the reports
+ *  cannot drift apart and label the same bachur differently. */
+export const CLOSE_TO_BASKET_RATIO = 0.8;
+
 // ─── Types (matching existing app types) ─────────────────────
 export interface Outing {
   id: string;
