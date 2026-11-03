@@ -24,6 +24,7 @@ import {
   fetchExpenseCategories, saveExpenseCategoriesToDb,
 } from "@/lib/db";
 import { addActivityLog } from "@/lib/db";
+import { isDemo } from "@/lib/demoMode";
 
 // Keys that are mirrored to Supabase
 const SYNCED_KEYS = new Set([
@@ -138,6 +139,7 @@ async function flushKey(key: string) {
 }
 
 function scheduleFlush(key: string) {
+  if (isDemo()) return;   // demo writes never leave the browser
   if (flushTimers[key]) clearTimeout(flushTimers[key]);
   flushTimers[key] = setTimeout(() => {
     delete flushTimers[key];
@@ -187,6 +189,7 @@ let bootstrapped = false;
 let bootstrapPromise: Promise<void> | null = null;
 
 export function bootstrapStorage(): Promise<void> {
+  if (isDemo()) return Promise.resolve();
   if (bootstrapped) return Promise.resolve();
   if (bootstrapPromise) return bootstrapPromise;
 

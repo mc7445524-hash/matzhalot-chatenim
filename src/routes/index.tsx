@@ -21,6 +21,9 @@ import ChatPanel from "@/components/ChatPanel";
 import { supabase } from "@/integrations/supabase/client";
 import { bootstrapStorage } from "@/lib/storageSync";
 import { startRealtimeSync } from "@/lib/realtimeSync";
+import { isDemo, installDemoMode } from "@/lib/demoMode";
+
+installDemoMode();
 
 export const Route = createFileRoute("/")({
   component: Index,
@@ -48,8 +51,10 @@ const tabTitles: Record<TabId, string> = {
 
 function Index() {
   const { session, loading: authLoading, profileStatus, isAdmin, registering } = useAuth();
+  const demo = isDemo();
 
   useEffect(() => {
+    if (demo) return;
     if (!authLoading && session && profileStatus !== "unknown" && profileStatus !== "approved" && !isAdmin) {
       try {
         sessionStorage.setItem(
@@ -62,6 +67,8 @@ function Index() {
       supabase.auth.signOut().then(() => window.location.reload());
     }
   }, [authLoading, session, profileStatus, isAdmin]);
+
+  if (demo) return <AuthenticatedApp />;
 
   if (authLoading || registering) {
     return (
@@ -102,6 +109,9 @@ function AuthenticatedAppInner() {
   const settingsBtnRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
+    // Demo data is already in memory; bootstrapping would pull the real
+    // project's rows over it.
+    if (isDemo()) { setReady(true); return; }
     bootstrapStorage()
       .then(() => {
         startRealtimeSync();

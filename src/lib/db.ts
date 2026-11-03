@@ -1,4 +1,19 @@
 import { supabase } from "@/integrations/supabase/client";
+import { isDemo } from "@/lib/demoMode";
+
+/** In demo mode this whole layer is backed by the in-memory store that
+ *  demoMode installs over localStorage, so the context-driven screens and
+ *  the localStorage-driven ones read and write the same data — and none of
+ *  it reaches Supabase. */
+function demoRead<T>(key: string, fallback: T): T {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : fallback;
+  } catch { return fallback; }
+}
+function demoWrite(key: string, value: unknown): void {
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* noop */ }
+}
 
 /** Share of the minimum at which a bachur counts as "קרוב לסל".
  *  Defined once so the dashboard, the bachurim list and the reports
@@ -101,6 +116,7 @@ export interface GlobalSettingsData {
 // ─── Fetch functions ─────────────────────────────────────────
 
 export async function fetchBachurim(): Promise<Bachur[]> {
+  if (isDemo()) return demoRead<Bachur[]>("bachurim", []);
   const { data: rows, error } = await supabase.from("bachurim").select("*");
   if (error) { console.error("fetchBachurim", error); return []; }
 
@@ -139,6 +155,7 @@ export async function fetchBachurim(): Promise<Bachur[]> {
 }
 
 export async function saveBachurimToDb(bachurim: Bachur[]): Promise<void> {
+  if (isDemo()) return demoWrite("bachurim", bachurim);
   // Delete all then re-insert (simple approach for full-sync)
   await supabase.from("outings").delete().neq("id", "___never___");
   await supabase.from("bachurim").delete().neq("id", "___never___");
@@ -186,6 +203,7 @@ export async function saveBachurimToDb(bachurim: Bachur[]): Promise<void> {
 }
 
 export async function fetchIncomes(): Promise<Income[]> {
+  if (isDemo()) return demoRead<Income[]>("incomes", []);
   const { data, error } = await supabase.from("incomes").select("*");
   if (error) { console.error("fetchIncomes", error); return []; }
   return (data || []).map((r) => ({
@@ -203,6 +221,7 @@ export async function fetchIncomes(): Promise<Income[]> {
 }
 
 export async function saveIncomesToDb(incomes: Income[]): Promise<void> {
+  if (isDemo()) return demoWrite("incomes", incomes);
   await supabase.from("incomes").delete().neq("id", "___never___");
   if (incomes.length === 0) return;
   const rows = incomes.map((i) => ({
@@ -224,6 +243,7 @@ export async function saveIncomesToDb(incomes: Income[]): Promise<void> {
 }
 
 export async function fetchExpenses(): Promise<Expense[]> {
+  if (isDemo()) return demoRead<Expense[]>("expenses", []);
   const { data, error } = await supabase.from("expenses").select("*");
   if (error) { console.error("fetchExpenses", error); return []; }
   return (data || []).map((r) => ({
@@ -270,12 +290,14 @@ async function uploadInvoice(expenseId: string, e: Expense): Promise<string | un
 
 /** Fetches an invoice back out of storage as a Blob. */
 export async function downloadInvoice(path: string): Promise<Blob | null> {
+  if (isDemo()) return null;
   const { data, error } = await supabase.storage.from("invoices").download(path);
   if (error) { console.error("downloadInvoice", error); return null; }
   return data;
 }
 
 export async function saveExpensesToDb(expenses: Expense[]): Promise<void> {
+  if (isDemo()) return demoWrite("expenses", expenses);
   // Upload any newly picked invoice before touching the table, so a failed
   // upload can never leave a row pointing at a file that was never stored.
   const paths = new Map<string, string>();
@@ -309,6 +331,7 @@ export async function saveExpensesToDb(expenses: Expense[]): Promise<void> {
 }
 
 export async function fetchDebts(): Promise<Debt[]> {
+  if (isDemo()) return demoRead<Debt[]>("debts", []);
   const { data, error } = await supabase.from("debts").select("*");
   if (error) { console.error("fetchDebts", error); return []; }
   return (data || []).map((r) => ({
@@ -325,6 +348,7 @@ export async function fetchDebts(): Promise<Debt[]> {
 }
 
 export async function saveDebtsToDb(debts: Debt[]): Promise<void> {
+  if (isDemo()) return demoWrite("debts", debts);
   await supabase.from("debts").delete().neq("id", "___never___");
   if (debts.length === 0) return;
   const rows = debts.map((d) => ({
@@ -345,6 +369,7 @@ export async function saveDebtsToDb(debts: Debt[]): Promise<void> {
 }
 
 export async function fetchAskanimIncomes(): Promise<AskanimIncome[]> {
+  if (isDemo()) return demoRead<AskanimIncome[]>("askanimIncomes", []);
   const { data, error } = await supabase.from("askanim_incomes").select("*");
   if (error) { console.error("fetchAskanimIncomes", error); return []; }
   return (data || []).map((r) => ({
@@ -358,6 +383,7 @@ export async function fetchAskanimIncomes(): Promise<AskanimIncome[]> {
 }
 
 export async function saveAskanimIncomesToDb(incomes: AskanimIncome[]): Promise<void> {
+  if (isDemo()) return demoWrite("askanimIncomes", incomes);
   await supabase.from("askanim_incomes").delete().neq("id", "___never___");
   if (incomes.length === 0) return;
   const rows = incomes.map((i) => ({
@@ -375,6 +401,7 @@ export async function saveAskanimIncomesToDb(incomes: AskanimIncome[]): Promise<
 }
 
 export async function fetchBasketProducts(): Promise<BasketProduct[]> {
+  if (isDemo()) return demoRead<BasketProduct[]>("basketProducts", []);
   const { data, error } = await supabase.from("basket_products").select("*");
   if (error) { console.error("fetchBasketProducts", error); return []; }
   return (data || []).map((r) => ({
@@ -385,6 +412,7 @@ export async function fetchBasketProducts(): Promise<BasketProduct[]> {
 }
 
 export async function saveBasketProductsToDb(products: BasketProduct[]): Promise<void> {
+  if (isDemo()) return demoWrite("basketProducts", products);
   await supabase.from("basket_products").delete().neq("id", "___never___");
   if (products.length === 0) return;
   const rows = products.map((p) => ({ id: p.id, name: p.name, cost: p.cost }));
@@ -393,6 +421,7 @@ export async function saveBasketProductsToDb(products: BasketProduct[]): Promise
 }
 
 export async function fetchGlobalSettings(): Promise<GlobalSettingsData> {
+  if (isDemo()) return demoRead<GlobalSettingsData>("globalSettings", {} as GlobalSettingsData);
   const defaults: GlobalSettingsData = {
     basketCost: 6000,
     basketCostHistory: [],
@@ -414,6 +443,7 @@ export async function fetchGlobalSettings(): Promise<GlobalSettingsData> {
 }
 
 export async function saveGlobalSettingsToDb(settings: GlobalSettingsData): Promise<void> {
+  if (isDemo()) return demoWrite("globalSettings", settings);
   const entries = [
     { key: "basketCost", value: settings.basketCost },
     { key: "basketCostHistory", value: settings.basketCostHistory },
@@ -430,6 +460,7 @@ export async function saveGlobalSettingsToDb(settings: GlobalSettingsData): Prom
 }
 
 export async function fetchFundraisers(): Promise<string[]> {
+  if (isDemo()) return demoRead<string[]>("fundraisers", []);
   const { data, error } = await supabase.from("fundraisers").select("*");
   if (error || !data || data.length === 0) {
     return ["שמואל זאב נוטביץ", "יענקי הלר", "עסקנים", "שונות"];
@@ -438,6 +469,7 @@ export async function fetchFundraisers(): Promise<string[]> {
 }
 
 export async function saveFundraisersToDb(names: string[]): Promise<void> {
+  if (isDemo()) return demoWrite("fundraisers", names);
   await supabase.from("fundraisers").delete().neq("id", "___never___");
   if (names.length === 0) return;
   const rows = names.map((n) => ({ id: crypto.randomUUID(), name: n }));
@@ -446,6 +478,7 @@ export async function saveFundraisersToDb(names: string[]): Promise<void> {
 }
 
 export async function fetchExpenseCategories(): Promise<{ salim: string[]; amuta: string[] }> {
+  if (isDemo()) return { salim: demoRead<string[]>("expense_cats_salim", []), amuta: demoRead<string[]>("expense_cats_amuta", []) };
   const { data, error } = await supabase.from("expense_categories").select("*");
   if (error || !data || data.length === 0) {
     return {
@@ -460,6 +493,7 @@ export async function fetchExpenseCategories(): Promise<{ salim: string[]; amuta
 }
 
 export async function saveExpenseCategoriesToDb(salim: string[], amuta: string[]): Promise<void> {
+  if (isDemo()) { demoWrite("expense_cats_salim", salim); return demoWrite("expense_cats_amuta", amuta); }
   await supabase.from("expense_categories").delete().neq("id", "___never___");
   const rows = [
     ...salim.map((n) => ({ id: crypto.randomUUID(), type: "salim", name: n })),
@@ -485,6 +519,7 @@ export async function addActivityLog(
   details: string,
   amount?: number,
 ): Promise<void> {
+  if (isDemo()) return;
   const { data: { user } } = await supabase.auth.getUser();
   const { error } = await supabase.from("activity_log").insert({
     user_id: user?.id ?? null,
@@ -497,6 +532,7 @@ export async function addActivityLog(
 }
 
 export async function fetchActivityLog(): Promise<ActivityLogEntry[]> {
+  if (isDemo()) return [];
   const { data, error } = await supabase
     .from("activity_log")
     .select("id, user_email, action_type, details, amount, created_at")
