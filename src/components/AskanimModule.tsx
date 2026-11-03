@@ -18,6 +18,7 @@ import {
 import { useFocusRow } from "@/hooks/useFocusRow";
 import { toast } from "sonner";
 import type { Bachur } from "@/components/BachurimModule";
+import OutingsExcel from "@/components/OutingsExcel";
 
 // ─── Types ────────────────────────────────────────────────────
 interface AskanimIncome {
@@ -230,7 +231,8 @@ export default function AskanimModule() {
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-4">
         <h1 className="text-2xl font-bold text-[hsl(var(--primary))]">פרויקט עסקנים</h1>
-        <div>
+        <div className="flex flex-wrap items-center gap-2">
+          <OutingsExcel mode="askanim" bachurim={bachurim} onDone={refresh} />
           <Button variant="outline" size="sm" className="relative" asChild>
             <label className="cursor-pointer">
               <Upload className="ml-2 h-4 w-4" />

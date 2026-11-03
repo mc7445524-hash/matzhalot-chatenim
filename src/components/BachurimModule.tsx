@@ -32,6 +32,7 @@ import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import { useFocusRow } from "@/hooks/useFocusRow";
 import MasterExcelImport from "@/components/MasterExcelImport";
+import OutingsExcel from "@/components/OutingsExcel";
 import { CLOSE_TO_BASKET_RATIO } from "@/lib/db";
 
 // ─── Types ────────────────────────────────────────────────────
@@ -616,6 +617,7 @@ export default function BachurimModule() {
         <Button variant="outline" className="gap-1.5" onClick={() => setExportDialogOpen(true)}>
           <Download className="h-4 w-4" /> ייצוא Excel
         </Button>
+        <OutingsExcel mode="basket" bachurim={bachurim} onDone={reload} />
         <div className="flex-1" />
         <Button variant={showClosed ? "secondary" : "outline"} className="gap-1.5" onClick={() => setShowClosed(!showClosed)}>
           {showClosed ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
