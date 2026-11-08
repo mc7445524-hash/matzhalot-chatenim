@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { Plus, Upload, Trash2, UserMinus, Search, X } from "lucide-react";
+import { Plus, Upload, Trash2, UserMinus, Search, X, Pencil, ListOrdered } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -47,19 +47,70 @@ function saveAskanimIncomes(data: AskanimIncome[]) {
   localStorage.setItem("askanimIncomes", JSON.stringify(data));
 }
 
-function addToAmutaIncome(description: string, amount: number, date: string) {
+/** Every askan income is written twice: once here and once, mirrored, into
+ *  the amuta incomes. The two have to move together — a mirror left behind
+ *  after a delete is money that no longer exists but still shows in the
+ *  incomes tab and in the reports. */
+function loadAmutaIncomes(): any[] {
   try {
-    const incomes = JSON.parse(localStorage.getItem("incomes") || "[]");
-    incomes.push({
-      id: crypto.randomUUID(),
-      description,
-      amount,
-      date,
-      category: "פרויקט עסקנים",
-      target: "עמותה",
-    });
-    localStorage.setItem("incomes", JSON.stringify(incomes));
-  } catch { /* ignore */ }
+    return JSON.parse(localStorage.getItem("incomes") || "[]");
+  } catch { return []; }
+}
+
+function saveAmutaIncomes(data: any[]) {
+  localStorage.setItem("incomes", JSON.stringify(data));
+}
+
+function mirrorOf(inc: AskanimIncome) {
+  return {
+    id: crypto.randomUUID(),
+    askanimIncomeId: inc.id,
+    description: `פרויקט עסקנים – ${inc.bachurName}`,
+    amount: inc.amount,
+    date: inc.date,
+    category: "פרויקט עסקנים",
+    target: "עמותה",
+  };
+}
+
+/** Locate an income's mirror. Rows written from now on carry the id of the
+ *  askan income they mirror; the ones already saved before this field
+ *  existed have to be recognised by their contents instead. */
+function findMirror(all: any[], inc: AskanimIncome): number {
+  const byId = all.findIndex((r) => r?.askanimIncomeId === inc.id);
+  if (byId >= 0) return byId;
+  return all.findIndex(
+    (r) =>
+      r?.category === "פרויקט עסקנים" &&
+      !r?.askanimIncomeId &&
+      r?.amount === inc.amount &&
+      r?.date === inc.date &&
+      String(r?.description || "").includes(inc.bachurName)
+  );
+}
+
+function mirrorAdd(inc: AskanimIncome) {
+  const all = loadAmutaIncomes();
+  all.push(mirrorOf(inc));
+  saveAmutaIncomes(all);
+}
+
+function mirrorUpdate(before: AskanimIncome, after: AskanimIncome) {
+  const all = loadAmutaIncomes();
+  const i = findMirror(all, before);
+  // A missing mirror means the pair was broken at some earlier point;
+  // writing a fresh one restores it rather than losing the money again.
+  if (i < 0) all.push(mirrorOf(after));
+  else all[i] = { ...all[i], ...mirrorOf(after), id: all[i].id };
+  saveAmutaIncomes(all);
+}
+
+function mirrorDelete(inc: AskanimIncome) {
+  const all = loadAmutaIncomes();
+  const i = findMirror(all, inc);
+  if (i < 0) return;
+  all.splice(i, 1);
+  saveAmutaIncomes(all);
 }
 
 function today() {
@@ -72,6 +123,8 @@ export default function AskanimModule() {
   const [incomes, setIncomes] = useState<AskanimIncome[]>([]);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [selectedBachur, setSelectedBachur] = useState<Bachur | null>(null);
+  const [editTarget, setEditTarget] = useState<AskanimIncome | null>(null);
+  const [panelBachur, setPanelBachur] = useState<Bachur | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<AskanimIncome | null>(null);
   const [removeFromAskanimTarget, setRemoveFromAskanimTarget] = useState<Bachur | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -104,12 +157,27 @@ export default function AskanimModule() {
   const totalByBachur = (bachurId: string) =>
     incomes.filter((i) => i.bachurId === bachurId).reduce((s, i) => s + i.amount, 0);
 
-  // ─── Add income ─────────────────────────────────────────────
+  // ─── Add / edit income ──────────────────────────────────────
   function openAddDialog(b: Bachur) {
     setSelectedBachur(b);
+    setEditTarget(null);
     setFormDate(today());
     setFormAmount("");
     setFormNotes("");
+    setAddDialogOpen(true);
+  }
+
+  function openEditDialog(inc: AskanimIncome) {
+    // The bachur may have been removed from the project since; the income
+    // still belongs to him, so fall back to the name stored on it.
+    setSelectedBachur(
+      bachurim.find((b) => b.id === inc.bachurId) ??
+        ({ id: inc.bachurId, name: inc.bachurName } as Bachur)
+    );
+    setEditTarget(inc);
+    setFormDate(inc.date);
+    setFormAmount(String(inc.amount));
+    setFormNotes(inc.notes || "");
     setAddDialogOpen(true);
   }
 
@@ -118,6 +186,22 @@ export default function AskanimModule() {
     const amount = Number(formAmount);
     if (!amount || amount <= 0) {
       toast.error("יש להזין סכום תקין");
+      return;
+    }
+
+    if (editTarget) {
+      const after: AskanimIncome = {
+        ...editTarget,
+        date: formDate,
+        amount,
+        notes: formNotes,
+      };
+      const updated = incomes.map((i) => (i.id === after.id ? after : i));
+      saveAskanimIncomes(updated);
+      setIncomes(updated);
+      mirrorUpdate(editTarget, after);
+      toast.success("ההכנסה עודכנה");
+      setAddDialogOpen(false);
       return;
     }
 
@@ -133,9 +217,7 @@ export default function AskanimModule() {
     const updated = [...incomes, newIncome];
     saveAskanimIncomes(updated);
     setIncomes(updated);
-
-    // add to amuta income
-    addToAmutaIncome(`פרויקט עסקנים – ${selectedBachur.name}`, amount, formDate);
+    mirrorAdd(newIncome);
 
     toast.success("ההכנסה נשמרה בהצלחה");
     setAddDialogOpen(false);
@@ -147,6 +229,7 @@ export default function AskanimModule() {
     const updated = incomes.filter((i) => i.id !== deleteTarget.id);
     saveAskanimIncomes(updated);
     setIncomes(updated);
+    mirrorDelete(deleteTarget);
     toast.success("ההכנסה נמחקה");
     setDeleteTarget(null);
   }
@@ -208,7 +291,7 @@ export default function AskanimModule() {
           notes,
         };
         newIncomes.push(income);
-        addToAmutaIncome(`פרויקט עסקנים – ${name}`, amount, date);
+        mirrorAdd(income);
         imported++;
       }
 
@@ -301,15 +384,29 @@ export default function AskanimModule() {
               <TableBody>
                 {filteredBachurim.map((b) => (
                   <TableRow key={b.id}>
-                    <TableCell className="font-medium">{b.name}</TableCell>
+                    <TableCell className="font-medium">
+                      <button
+                        className="text-primary hover:underline font-medium"
+                        onClick={() => setPanelBachur(b)}
+                        title="פתיחת כל ההכנסות של הבחור"
+                      >
+                        {b.name}
+                      </button>
+                    </TableCell>
                     <TableCell>{b.sku}</TableCell>
                     <TableCell>{b.classLevel}</TableCell>
                     <TableCell>{totalByBachur(b.id).toLocaleString("he-IL")} ₪</TableCell>
                     <TableCell className="text-center">
-                      <Button size="sm" onClick={() => openAddDialog(b)}>
-                        <Plus className="ml-1 h-4 w-4" />
-                        הוסף הכנסה
-                      </Button>
+                      <div className="flex items-center justify-center gap-2">
+                        <Button size="sm" onClick={() => openAddDialog(b)}>
+                          <Plus className="ml-1 h-4 w-4" />
+                          הוסף הכנסה
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => setPanelBachur(b)}>
+                          <ListOrdered className="ml-1 h-4 w-4" />
+                          הכנסות ועריכה
+                        </Button>
+                      </div>
                     </TableCell>
                     <TableCell className="text-center">
                       <Button
@@ -361,14 +458,20 @@ export default function AskanimModule() {
                     <TableCell>{inc.amount.toLocaleString("he-IL")} ₪</TableCell>
                     <TableCell className="max-w-[200px] truncate">{inc.notes || "—"}</TableCell>
                     <TableCell className="text-center">
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        onClick={() => setDeleteTarget(inc)}
-                      >
-                        <Trash2 className="ml-1 h-4 w-4" />
-                        מחק
-                      </Button>
+                      <div className="flex items-center justify-center gap-2">
+                        <Button variant="outline" size="sm" onClick={() => openEditDialog(inc)}>
+                          <Pencil className="ml-1 h-4 w-4" />
+                          ערוך
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => setDeleteTarget(inc)}
+                        >
+                          <Trash2 className="ml-1 h-4 w-4" />
+                          מחק
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -378,12 +481,93 @@ export default function AskanimModule() {
         )}
       </section>
 
+      {/* Per-bachur panel – every income of one bachur, with edit and delete */}
+      <Dialog open={!!panelBachur} onOpenChange={(o) => !o && setPanelBachur(null)}>
+        <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto" dir="rtl">
+          <DialogHeader>
+            <DialogTitle>{panelBachur?.name}</DialogTitle>
+            <DialogDescription>
+              כל ההכנסות של הבחור בפרויקט עסקנים — סה"כ{" "}
+              {panelBachur ? totalByBachur(panelBachur.id).toLocaleString("he-IL") : 0} ₪
+            </DialogDescription>
+          </DialogHeader>
+
+          {(() => {
+            const list = panelBachur
+              ? incomes
+                  .filter((i) => i.bachurId === panelBachur.id)
+                  .sort((a, b) => b.date.localeCompare(a.date))
+              : [];
+            if (list.length === 0) {
+              return (
+                <p className="text-muted-foreground text-sm py-4">
+                  אין עדיין הכנסות לבחור הזה.
+                </p>
+              );
+            }
+            return (
+              <div className="rounded-lg border overflow-hidden">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-muted/50">
+                      <TableHead className="text-right">תאריך</TableHead>
+                      <TableHead className="text-right">סכום</TableHead>
+                      <TableHead className="text-right">הערות</TableHead>
+                      <TableHead className="text-center">פעולות</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {list.map((inc) => (
+                      <TableRow key={inc.id}>
+                        <TableCell>{inc.date}</TableCell>
+                        <TableCell>{inc.amount.toLocaleString("he-IL")} ₪</TableCell>
+                        <TableCell className="max-w-[220px] truncate">{inc.notes || "—"}</TableCell>
+                        <TableCell className="text-center">
+                          <div className="flex items-center justify-center gap-2">
+                            <Button variant="outline" size="sm" onClick={() => openEditDialog(inc)}>
+                              <Pencil className="ml-1 h-4 w-4" />
+                              ערוך
+                            </Button>
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => setDeleteTarget(inc)}
+                            >
+                              <Trash2 className="ml-1 h-4 w-4" />
+                              מחק
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            );
+          })()}
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <DialogClose asChild>
+              <Button variant="outline">סגור</Button>
+            </DialogClose>
+            <Button onClick={() => panelBachur && openAddDialog(panelBachur)}>
+              <Plus className="ml-1 h-4 w-4" />
+              הוסף הכנסה
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Add income dialog */}
       <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
         <DialogContent className="sm:max-w-md" dir="rtl">
           <DialogHeader>
-            <DialogTitle>הוספת הכנסה לפרויקט עסקנים</DialogTitle>
-            <DialogDescription>הוסף הכנסה עבור {selectedBachur?.name}</DialogDescription>
+            <DialogTitle>
+              {editTarget ? "עריכת הכנסה" : "הוספת הכנסה לפרויקט עסקנים"}
+            </DialogTitle>
+            <DialogDescription>
+              {editTarget ? "עריכת הכנסה של" : "הוסף הכנסה עבור"} {selectedBachur?.name}
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div>
@@ -417,7 +601,7 @@ export default function AskanimModule() {
             <DialogClose asChild>
               <Button variant="outline">ביטול</Button>
             </DialogClose>
-            <Button onClick={handleSaveIncome}>שמור</Button>
+            <Button onClick={handleSaveIncome}>{editTarget ? "עדכן" : "שמור"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

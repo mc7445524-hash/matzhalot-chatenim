@@ -332,8 +332,9 @@ export default function OutingsExcel({ mode, bachurim, onDone }: Props) {
       })();
       for (const r of rowsToSave) {
         for (const p of r.parts) {
+          const incomeId = crypto.randomUUID();
           incomes.push({
-            id: crypto.randomUUID(),
+            id: incomeId,
             bachurId: r.bachurId,
             bachurName: r.name,
             date: plan.date,
@@ -342,8 +343,11 @@ export default function OutingsExcel({ mode, bachurim, onDone }: Props) {
           });
           // Mirrored into the amuta incomes exactly as the manual dialog
           // does; without it the money is missing from the other reports.
+          // askanimIncomeId ties the two together so that editing or
+          // deleting the income later moves its mirror with it.
           allIncomes.push({
             id: crypto.randomUUID(),
+            askanimIncomeId: incomeId,
             description: `פרויקט עסקנים – ${r.name}`,
             amount: p.amount,
             date: plan.date,
