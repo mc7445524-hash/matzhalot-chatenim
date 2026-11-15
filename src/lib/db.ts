@@ -42,6 +42,11 @@ export interface Bachur {
   receivedBasket: boolean;
   basketDate?: string;
   basketCostAtTime?: number;
+  /** What the basket was made of on the day this bachur received it, with
+   *  each shop's share. The products and their prices go on changing after
+   *  that, so without this snapshot an invoice from last March would be
+   *  checked against a price that did not exist then. */
+  basketBreakdownAtTime?: BasketShare[];
   inAskanim: boolean;
   closed: boolean;
 }
@@ -70,6 +75,14 @@ export interface Expense {
   recognized: boolean;
   recognizedDate?: string;
   auto?: boolean;
+  /** Set on an expense that pays a shop for baskets: which product (shop)
+   *  it is for, and which bachurim it settles. The gap is the difference
+   *  between the sum those bachurim locked and what was actually paid —
+   *  a discount keeps it, a debt still owes it. */
+  basketProductId?: string;
+  basketBachurIds?: string[];
+  basketGapKind?: "discount" | "debt";
+  basketGapAmount?: number;
   /** Path inside the private "invoices" bucket. Set once the file is uploaded. */
   invoicePath?: string;
   invoiceFileName?: string;
@@ -99,10 +112,23 @@ export interface AskanimIncome {
   notes: string;
 }
 
+/** One shop's share of a basket, as it stood when a basket was handed over. */
+export interface BasketShare {
+  productId: string;
+  name: string;
+  cost: number;
+}
+
 export interface BasketProduct {
   id: string;
   name: string;
   cost: number;
+  /** Every price change, newest first. */
+  costHistory: { date: string; oldCost: number; newCost: number }[];
+  /** False once the product is taken out of the basket. It stays on the
+   *  list while bachurim who locked it are still owed to that shop, and is
+   *  removed for good once the last of them is settled. */
+  active: boolean;
 }
 
 export interface GlobalSettingsData {
@@ -153,6 +179,7 @@ export async function fetchBachurim(): Promise<Bachur[]> {
     receivedBasket: r.received_basket,
     basketDate: r.basket_date || undefined,
     basketCostAtTime: r.basket_cost_at_time != null ? Number(r.basket_cost_at_time) : undefined,
+    basketBreakdownAtTime: (r.basket_breakdown_at_time as BasketShare[]) ?? undefined,
     inAskanim: r.in_askanim,
     closed: r.closed,
   }));
@@ -177,6 +204,7 @@ export async function saveBachurimToDb(bachurim: Bachur[]): Promise<void> {
     received_basket: b.receivedBasket,
     basket_date: b.basketDate || null,
     basket_cost_at_time: b.basketCostAtTime ?? null,
+    basket_breakdown_at_time: b.basketBreakdownAtTime ?? null,
     in_askanim: b.inAskanim,
     closed: b.closed,
   }));
@@ -256,6 +284,10 @@ export async function fetchExpenses(): Promise<Expense[]> {
     date: r.date,
     category: r.category,
     subCategory: r.sub_category,
+    basketProductId: r.basket_product_id || undefined,
+    basketBachurIds: (r.basket_bachur_ids as string[]) ?? undefined,
+    basketGapKind: (r.basket_gap_kind as "discount" | "debt") || undefined,
+    basketGapAmount: r.basket_gap_amount != null ? Number(r.basket_gap_amount) : undefined,
     notes: r.notes,
     contactPerson: r.contact_person,
     recognized: r.recognized,
@@ -319,6 +351,10 @@ export async function saveExpensesToDb(expenses: Expense[]): Promise<void> {
     date: e.date,
     category: e.category,
     sub_category: e.subCategory,
+    basket_product_id: e.basketProductId || null,
+    basket_bachur_ids: e.basketBachurIds ?? null,
+    basket_gap_kind: e.basketGapKind || null,
+    basket_gap_amount: e.basketGapAmount ?? null,
     notes: e.notes,
     contact_person: e.contactPerson,
     recognized: e.recognized,
@@ -412,6 +448,10 @@ export async function fetchBasketProducts(): Promise<BasketProduct[]> {
     id: r.id,
     name: r.name,
     cost: Number(r.cost),
+    costHistory: (r.cost_history as any[]) ?? [],
+    // Rows written before this column existed come back null, and those
+    // products are all still in the basket.
+    active: r.active !== false,
   }));
 }
 
@@ -419,7 +459,11 @@ export async function saveBasketProductsToDb(products: BasketProduct[]): Promise
   if (isDemo()) return demoWrite("basketProducts", products);
   await supabase.from("basket_products").delete().neq("id", "___never___");
   if (products.length === 0) return;
-  const rows = products.map((p) => ({ id: p.id, name: p.name, cost: p.cost }));
+  const rows = products.map((p) => ({
+    id: p.id, name: p.name, cost: p.cost,
+    cost_history: p.costHistory ?? [],
+    active: p.active !== false,
+  }));
   const { error } = await supabase.from("basket_products").insert(rows);
   if (error) console.error("saveBasketProducts", error);
 }

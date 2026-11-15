@@ -38,6 +38,13 @@ interface Expense {
   recognized: boolean;
   recognizedDate?: string;
   auto?: boolean;
+  /** Set on a payment to one of the basket's shops: which shop it went to,
+   *  which bachurim it settles, and how it differed from what they had
+   *  locked. The last three are filled in by the basket-closing screen. */
+  basketProductId?: string;
+  basketBachurIds?: string[];
+  basketGapKind?: "discount" | "debt";
+  basketGapAmount?: number;
   invoiceFileName?: string;
   invoiceFileData?: string;
   invoiceFileType?: string;
@@ -62,6 +69,20 @@ function loadExpenses(): Expense[] {
 
 function saveExpenses(data: Expense[]) {
   localStorage.setItem("expenses", JSON.stringify(data));
+}
+
+/** The shops a basket is made of. They are kept in one place — the basket
+ *  cost screen — and offered here under "סלים" so that a payment to a shop
+ *  carries exactly the name the basket knows it by. Two lists of the same
+ *  shops, typed twice, would never line up. */
+function loadBasketShops(): { id: string; name: string; active: boolean }[] {
+  try {
+    const raw = JSON.parse(localStorage.getItem("basketProducts") || "[]");
+    if (!Array.isArray(raw)) return [];
+    return raw.map((p: any) => ({
+      id: String(p?.id || ""), name: String(p?.name || ""), active: p?.active !== false,
+    })).filter((p: any) => p.id && p.name);
+  } catch { return []; }
 }
 
 function loadCategories(key: string, defaults: string[]): string[] {
@@ -117,7 +138,11 @@ export default function ExpensesModule() {
   const [downloadFrom, setDownloadFrom] = useState("");
   const [downloadTo, setDownloadTo] = useState("");
 
-  const refresh = useCallback(() => setExpenses(loadExpenses()), []);
+  const [basketShops, setBasketShops] = useState(loadBasketShops);
+  const refresh = useCallback(() => {
+    setExpenses(loadExpenses());
+    setBasketShops(loadBasketShops());
+  }, []);
   useEffect(() => { refresh(); }, [refresh]);
   const openEditById = useCallback((id: string) => {
     const exp = loadExpenses().find((e) => e.id === id);
@@ -133,7 +158,12 @@ export default function ExpensesModule() {
   const totalSalim = expenses.filter((e) => e.category === "סלים").reduce((s, e) => s + e.amount, 0);
   const totalAmuta = expenses.filter((e) => e.category === "עמותה").reduce((s, e) => s + e.amount, 0);
 
-  const subOptions = formCategory === "סלים" ? catsSalim : formCategory === "עמותה" ? catsAmuta : [];
+  // Under "סלים" the shops of the basket come first; anything else already
+  // on the list stays available underneath so nothing that exists is lost.
+  const subOptions =
+    formCategory === "סלים"
+      ? [...new Set([...basketShops.map((p) => p.name), ...catsSalim])]
+      : formCategory === "עמותה" ? catsAmuta : [];
   const needsInvoice = formCategory === "עמותה" && formRecognized;
   const canSave =
     Number(formAmount) > 0 &&
@@ -242,6 +272,14 @@ export default function ExpensesModule() {
           invoicePath: undefined,
         };
 
+    // A payment under "סלים" whose sub-category is one of the basket's shops
+    // is a payment to that shop, and is linked to it by id rather than by the
+    // spelling of its name, which may be corrected later.
+    const shopId =
+      formCategory === "סלים"
+        ? basketShops.find((p) => p.name === formSub)?.id
+        : undefined;
+
     if (editTarget) {
       const updated = expenses.map((e) =>
         e.id === editTarget.id
@@ -251,6 +289,7 @@ export default function ExpensesModule() {
               date: formDate,
               category: formCategory,
               subCategory: formSub,
+              basketProductId: shopId,
               notes: formNotes.trim(),
               contactPerson: formContact.trim(),
               recognized,
@@ -269,6 +308,7 @@ export default function ExpensesModule() {
         date: formDate,
         category: formCategory,
         subCategory: formSub,
+        basketProductId: shopId,
         notes: formNotes.trim(),
         contactPerson: formContact.trim(),
         recognized,

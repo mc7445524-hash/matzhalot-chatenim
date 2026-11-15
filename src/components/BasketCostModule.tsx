@@ -21,14 +21,49 @@ interface BasketProduct {
   id: string;
   name: string;
   cost: number;
+  /** Every price change, newest first, so a basket handed over before a rise
+   *  can still be checked against the price that applied on the day. */
+  costHistory: { date: string; oldCost: number; newCost: number }[];
+  /** False once the product is taken out of the basket. New baskets stop
+   *  carrying it, but it stays visible while bachurim who locked it still
+   *  owe that shop. */
+  active: boolean;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────
 const PRODUCTS_KEY = "basketProducts";
 
 function loadProducts(): BasketProduct[] {
-  try { return JSON.parse(localStorage.getItem(PRODUCTS_KEY) || "[]"); }
-  catch { return []; }
+  try {
+    const raw = JSON.parse(localStorage.getItem(PRODUCTS_KEY) || "[]");
+    if (!Array.isArray(raw)) return [];
+    // Products saved before these fields existed are all still in the basket.
+    return raw.map((p: any) => ({
+      ...p,
+      costHistory: Array.isArray(p?.costHistory) ? p.costHistory : [],
+      active: p?.active !== false,
+    }));
+  } catch { return []; }
+}
+
+/** Bachurim who locked this product into their basket and have not yet been
+ *  settled with that shop. While any remain, the product cannot be removed
+ *  for good — the money they owe it would have nowhere to go. */
+function openBachurimFor(productId: string): string[] {
+  try {
+    const bachurim = JSON.parse(localStorage.getItem("bachurim") || "[]");
+    const expenses = JSON.parse(localStorage.getItem("expenses") || "[]");
+    const settled = new Set<string>();
+    for (const e of expenses) {
+      if (e?.basketProductId !== productId) continue;
+      for (const id of e?.basketBachurIds || []) settled.add(id);
+    }
+    return bachurim
+      .filter((b: any) =>
+        (b?.basketBreakdownAtTime || []).some((x: any) => x?.productId === productId) &&
+        !settled.has(b.id))
+      .map((b: any) => b.name);
+  } catch { return []; }
 }
 
 function saveProducts(data: BasketProduct[]) {
@@ -71,7 +106,8 @@ export default function BasketCostModule({ onOpenSettings }: BasketCostModulePro
 
   useEffect(() => { refresh(); }, [refresh]);
 
-  const totalCost = products.reduce((s, p) => s + p.cost, 0);
+  const activeProducts = products.filter((p) => p.active);
+  const totalCost = activeProducts.reduce((s, p) => s + p.cost, 0);
   const diff = totalCost - settings.minimumForBasket;
 
   // Sync basket cost to global settings automatically
@@ -111,12 +147,25 @@ export default function BasketCostModule({ onOpenSettings }: BasketCostModulePro
 
     let updated: BasketProduct[];
     if (editTarget) {
-      updated = products.map((p) =>
-        p.id === editTarget.id ? { ...p, name: formName.trim(), cost } : p
+      updated = products.map((p) => {
+        if (p.id !== editTarget.id) return p;
+        // A price change is logged, so baskets handed over earlier keep being
+        // measured against the price that was in force when they went out.
+        const history = cost !== p.cost
+          ? [{ date: new Date().toISOString(), oldCost: p.cost, newCost: cost }, ...(p.costHistory || [])]
+          : p.costHistory || [];
+        return { ...p, name: formName.trim(), cost, costHistory: history };
+      });
+      toast.success(
+        cost !== editTarget.cost
+          ? `המחיר עודכן — השינוי נשמר בהיסטוריה`
+          : "המוצר עודכן"
       );
-      toast.success("המוצר עודכן");
     } else {
-      updated = [...products, { id: crypto.randomUUID(), name: formName.trim(), cost }];
+      updated = [...products, {
+        id: crypto.randomUUID(), name: formName.trim(), cost,
+        costHistory: [], active: true,
+      }];
       toast.success("המוצר נוסף");
     }
     saveProducts(updated);
@@ -127,10 +176,25 @@ export default function BasketCostModule({ onOpenSettings }: BasketCostModulePro
   // ─── Delete ─────────────────────────────────────────────────
   function handleDelete() {
     if (!deleteTarget) return;
-    const updated = products.filter((p) => p.id !== deleteTarget.id);
+    const owed = openBachurimFor(deleteTarget.id);
+    let updated: BasketProduct[];
+    if (owed.length > 0) {
+      // Deleting outright would strand the money those bachurim still owe
+      // this shop, so the product leaves the basket but stays on the books.
+      updated = products.map((p) =>
+        p.id === deleteTarget.id ? { ...p, active: false } : p
+      );
+      toast.success(
+        `"${deleteTarget.name}" הוצא מהסל. ${owed.length} בחורים עדיין לא נסגרו מולו ` +
+        `והוא יישאר ברשימה עד שייסגרו.`,
+        { duration: 8000 }
+      );
+    } else {
+      updated = products.filter((p) => p.id !== deleteTarget.id);
+      toast.success("המוצר נמחק");
+    }
     saveProducts(updated);
     setProducts(updated);
-    toast.success("המוצר נמחק");
     setDeleteTarget(null);
   }
 
@@ -203,19 +267,35 @@ export default function BasketCostModule({ onOpenSettings }: BasketCostModulePro
               </TableHeader>
               <TableBody>
                 {products.map((p) => (
-                  <TableRow key={p.id}>
-                    <TableCell className="font-medium">{p.name}</TableCell>
-                    <TableCell>{p.cost.toLocaleString("he-IL")} ₪</TableCell>
+                  <TableRow key={p.id} className={p.active ? undefined : "opacity-60"}>
+                    <TableCell className="font-medium">
+                      {p.name}
+                      {!p.active && (
+                        <span className="mr-2 rounded bg-muted px-1.5 py-0.5 text-xs font-normal text-muted-foreground">
+                          הוצא מהסל — ממתין לסגירה
+                        </span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {p.cost.toLocaleString("he-IL")} ₪
+                      {(p.costHistory || []).length > 0 && (
+                        <span className="mr-2 text-xs text-muted-foreground">
+                          (לפני כן {p.costHistory[0].oldCost.toLocaleString("he-IL")} ₪)
+                        </span>
+                      )}
+                    </TableCell>
                     <TableCell className="text-center">
                       <div className="flex gap-2 justify-center">
                         <Button variant="outline" size="sm" onClick={() => openEdit(p)}>
                           <Pencil className="ml-1 h-3 w-3" />
                           ערוך
                         </Button>
-                        <Button variant="destructive" size="sm" onClick={() => setDeleteTarget(p)}>
-                          <Trash2 className="ml-1 h-3 w-3" />
-                          מחק
-                        </Button>
+                        {p.active && (
+                          <Button variant="destructive" size="sm" onClick={() => setDeleteTarget(p)}>
+                            <Trash2 className="ml-1 h-3 w-3" />
+                            מחק
+                          </Button>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>

@@ -45,6 +45,12 @@ export interface Outing {
   paymentMethodDetail?: string;
 }
 
+export interface BasketShare {
+  productId: string;
+  name: string;
+  cost: number;
+}
+
 export interface Bachur {
   id: string;
   sku: string;
@@ -57,6 +63,10 @@ export interface Bachur {
   receivedBasket: boolean;
   basketDate?: string;
   basketCostAtTime?: number;
+  /** The shops the basket was made of on the day it was handed over, each
+   *  with its share. Prices keep moving afterwards, so without this an
+   *  invoice from last March would be checked against today's price. */
+  basketBreakdownAtTime?: BasketShare[];
   inAskanim: boolean;
   closed: boolean;
 }
@@ -240,14 +250,29 @@ export default function BachurimModule() {
     toast.success(`${b.name} נוסף בהצלחה (מק"ט: ${b.sku})`);
   };
 
+  /** What the basket is made of right now, shop by shop. Withdrawn products
+   *  are left out — they are no longer part of a basket going out today. */
+  const getBasketBreakdown = (): BasketShare[] => {
+    try {
+      const raw = JSON.parse(localStorage.getItem("basketProducts") || "[]");
+      if (!Array.isArray(raw)) return [];
+      return raw
+        .filter((p: any) => p?.active !== false)
+        .map((p: any) => ({ productId: p.id, name: p.name, cost: Number(p.cost) || 0 }));
+    } catch { return []; }
+  };
+
   // ─── Basket Action ──────────────────────────────
   const handleBasket = (b: Bachur) => {
     const cost = getBasketCost();
     const income = totalIncome(b);
     const subsidy = cost - minimum;
+    // The breakdown is frozen onto the bachur here. From this point the shop
+    // prices may change as often as they like without moving his basket.
+    const breakdown = getBasketBreakdown();
     const updated = bachurim.map((x) =>
       x.id === b.id
-        ? { ...x, receivedBasket: true, basketDate: new Date().toISOString(), basketCostAtTime: cost, married: true, marriedDate: new Date().toISOString(), closed: true }
+        ? { ...x, receivedBasket: true, basketDate: new Date().toISOString(), basketCostAtTime: cost, basketBreakdownAtTime: breakdown, married: true, marriedDate: new Date().toISOString(), closed: true }
         : x
     );
     persist(updated);
@@ -307,7 +332,7 @@ export default function BachurimModule() {
 
     const updated = bachurim.map((x) =>
       x.id === b.id
-        ? { ...x, married: false, marriedDate: undefined, receivedBasket: false, basketDate: undefined, basketCostAtTime: undefined, closed: false }
+        ? { ...x, married: false, marriedDate: undefined, receivedBasket: false, basketDate: undefined, basketCostAtTime: undefined, basketBreakdownAtTime: undefined, closed: false }
         : x
     );
     persist(updated);
