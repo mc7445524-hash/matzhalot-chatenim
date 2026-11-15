@@ -29,3 +29,10 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Material that lives beside the code but is not part of it: the training
+# videos and the written guides. Both are heavy, neither is deployed, and
+# GitHub refuses a file over 100MB.
+סרטוני הדרכה/
+מדריך חישובים/
+*.mp4
