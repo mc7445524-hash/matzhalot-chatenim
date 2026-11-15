@@ -20,6 +20,7 @@ const tabs = [
   { id: "dashboard", label: "ראשי" },
   { id: "bachurim", label: "בחורים" },
   { id: "askanim", label: "פרויקט עסקנים" },
+  { id: "excess", label: "עברו את המינימום" },
   { id: "income", label: "הכנסות" },
   { id: "expenses", label: "הוצאות" },
   { id: "debts", label: "חובות" },

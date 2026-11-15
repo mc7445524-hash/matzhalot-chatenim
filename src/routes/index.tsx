@@ -5,6 +5,7 @@ import { NavigationProvider, useNavigation } from "@/contexts/NavigationContext"
 import Dashboard from "@/components/Dashboard";
 import BachurimModule from "@/components/BachurimModule";
 import AskanimModule from "@/components/AskanimModule";
+import ExcessModule from "@/components/ExcessModule";
 import IncomesModule from "@/components/IncomesModule";
 import ExpensesModule from "@/components/ExpensesModule";
 import DebtsModule from "@/components/DebtsModule";
@@ -39,6 +40,7 @@ const tabTitles: Record<TabId, string> = {
   dashboard: "ראשי",
   bachurim: "בחורים",
   askanim: "פרויקט עסקנים",
+  excess: "עברו את המינימום",
   income: "הכנסות",
   expenses: "הוצאות",
   debts: "חובות",
@@ -154,6 +156,8 @@ function AuthenticatedAppInner() {
           <BachurimModule />
         ) : activeTab === "askanim" ? (
           <AskanimModule />
+        ) : activeTab === "excess" ? (
+          <ExcessModule />
         ) : activeTab === "income" ? (
           <IncomesModule />
         ) : activeTab === "expenses" ? (
