@@ -45,6 +45,7 @@ const defaultSettings: GlobalSettingsData = {
   basketCost: 6000,
   basketCostHistory: [],
   minimumForBasket: 5000,
+  minimumHistory: [],
   lastClassUpgrade: null,
   classUpgradeHistory: [],
 };

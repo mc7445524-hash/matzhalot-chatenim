@@ -109,6 +109,10 @@ export interface GlobalSettingsData {
   basketCost: number;
   basketCostHistory: { date: string; oldCost: number; newCost: number }[];
   minimumForBasket: number;
+  /** Every change of the minimum, oldest last. The minimum decides who is
+   *  eligible for a basket, so a report about last month has to be read
+   *  against the minimum that was in force then and not against today's. */
+  minimumHistory: { date: string; oldMin: number; newMin: number }[];
   lastClassUpgrade: { date: string; type: string } | null;
   classUpgradeHistory: { date: string; type: string }[];
 }
@@ -426,6 +430,7 @@ export async function fetchGlobalSettings(): Promise<GlobalSettingsData> {
     basketCost: 6000,
     basketCostHistory: [],
     minimumForBasket: 5000,
+    minimumHistory: [],
     lastClassUpgrade: null,
     classUpgradeHistory: [],
   };
@@ -437,6 +442,7 @@ export async function fetchGlobalSettings(): Promise<GlobalSettingsData> {
     basketCost: (map.get("basketCost") as number) ?? defaults.basketCost,
     basketCostHistory: (map.get("basketCostHistory") as any[]) ?? defaults.basketCostHistory,
     minimumForBasket: (map.get("minimumForBasket") as number) ?? defaults.minimumForBasket,
+    minimumHistory: (map.get("minimumHistory") as any[]) ?? defaults.minimumHistory,
     lastClassUpgrade: (map.get("lastClassUpgrade") as any) ?? defaults.lastClassUpgrade,
     classUpgradeHistory: (map.get("classUpgradeHistory") as any[]) ?? defaults.classUpgradeHistory,
   };
@@ -448,6 +454,7 @@ export async function saveGlobalSettingsToDb(settings: GlobalSettingsData): Prom
     { key: "basketCost", value: settings.basketCost },
     { key: "basketCostHistory", value: settings.basketCostHistory },
     { key: "minimumForBasket", value: settings.minimumForBasket },
+    { key: "minimumHistory", value: settings.minimumHistory },
     { key: "lastClassUpgrade", value: settings.lastClassUpgrade },
     { key: "classUpgradeHistory", value: settings.classUpgradeHistory },
   ];

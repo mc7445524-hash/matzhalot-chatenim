@@ -62,10 +62,17 @@ interface ClassUpgradeLog {
   type: "auto" | "manual";
 }
 
+interface MinimumEntry {
+  date: string;
+  oldMin: number;
+  newMin: number;
+}
+
 interface GlobalSettingsData {
   basketCost: number;
   basketCostHistory: BasketCostEntry[];
   minimumForBasket: number;
+  minimumHistory: MinimumEntry[];
   lastClassUpgrade: ClassUpgradeLog | null;
   classUpgradeHistory: ClassUpgradeLog[];
 }
@@ -78,6 +85,7 @@ function getDefaults(): GlobalSettingsData {
     basketCost: 6000,
     basketCostHistory: [],
     minimumForBasket: 5000,
+    minimumHistory: [],
     lastClassUpgrade: null,
     classUpgradeHistory: [],
   };
@@ -164,9 +172,17 @@ export default function GlobalSettings({ triggerRef, onNavigateToTab }: { trigge
       toast.info("הסכום לא השתנה");
       return;
     }
+    // The previous value is kept so that a report about an earlier period can
+    // still be read against the minimum that applied at the time.
+    const entry: MinimumEntry = {
+      date: new Date().toISOString(),
+      oldMin: settings.minimumForBasket,
+      newMin: amount,
+    };
     const updated: GlobalSettingsData = {
       ...settings,
       minimumForBasket: amount,
+      minimumHistory: [entry, ...(settings.minimumHistory || [])],
     };
     saveSettings(updated);
     setSettings(updated);
@@ -359,6 +375,25 @@ export default function GlobalSettings({ triggerRef, onNavigateToTab }: { trigge
             <p className="mt-2 text-xs text-muted-foreground">
               ערך נוכחי: <span className="font-semibold text-foreground">{formatCurrency(settings.minimumForBasket)}</span>
             </p>
+
+            {(settings.minimumHistory || []).length > 0 && (
+              <div className="mt-4">
+                <h4 className="text-sm font-medium text-muted-foreground mb-2">היסטוריית סכום המינימום</h4>
+                <div className="rounded-lg border border-border overflow-hidden">
+                  {(settings.minimumHistory || []).map((h, i) => (
+                    <div
+                      key={`${h.date}-${i}`}
+                      className="flex items-center justify-between gap-3 px-3 py-2 text-sm border-b border-border last:border-b-0"
+                    >
+                      <span className="text-muted-foreground">{formatDate(h.date)}</span>
+                      <span className="text-foreground">
+                        {formatCurrency(h.oldMin)} → <span className="font-semibold">{formatCurrency(h.newMin)}</span>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </section>
 
           <Separator />
