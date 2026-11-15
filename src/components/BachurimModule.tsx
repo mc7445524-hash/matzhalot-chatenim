@@ -165,7 +165,7 @@ export default function BachurimModule() {
   const handleDeleteBachur = () => {
     if (!deleteBachurId) return;
     const b = bachurim.find((x) => x.id === deleteBachurId);
-    if (b && !b.receivedBasket) {
+    if (b) {
       const income = totalIncome(b);
       if (income > 0) {
         addIncome(`תרומה – ${b.name}`, income);
@@ -276,9 +276,11 @@ export default function BachurimModule() {
         : x
     );
     persist(updated);
-    if (subsidy > 0) {
-      addExpense(`סבסוד סל – ${b.name}`, subsidy);
-    }
+    // No expense is written here. Topping a basket up to its cost moves money
+    // between the amuta's own pockets; nothing leaves the bank until a shop
+    // is paid, and that payment is the expense. Recording it twice used to
+    // inflate the spend and leave the basket's real cost unaccounted for.
+    void subsidy;
     setConfirmAction(null);
     setSelectedBachur(null);
     toast.success(`${b.name} קיבל סל ונרשם כנשוי`);
@@ -295,9 +297,7 @@ export default function BachurimModule() {
         : x
     );
     persist(updated);
-    if (!b.receivedBasket && income > 0) {
-      addIncome(`תרומה – ${b.name}`, income);
-    }
+    void income;
     setConfirmAction(null);
     setSelectedBachur(null);
     toast.success(`${b.name} נרשם כנשוי`);
