@@ -17,6 +17,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
 import { CLOSE_TO_BASKET_RATIO } from "@/lib/db";
+import { computeMoney } from "@/lib/money";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -48,10 +49,38 @@ function ExportButton({ onClick }: { onClick: () => void }) {
   );
 }
 
+function PocketRow({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="flex justify-between py-1 text-sm">
+      <span className="text-muted-foreground">{label}</span>
+      <span className={value < 0 ? "text-red-600" : "text-foreground"}>{fmt(value)}</span>
+    </div>
+  );
+}
+
+function StageCard(
+  { title, note, value, tone }:
+  { title: string; note: string; value: number; tone: "muted" | "amber" | "red" }
+) {
+  const ring = tone === "red"
+    ? "border-red-200 dark:border-red-900"
+    : tone === "amber"
+      ? "border-amber-200 dark:border-amber-900"
+      : "border-border";
+  return (
+    <div className={`rounded-xl border bg-card p-5 ${ring}`}>
+      <p className="text-sm font-medium text-muted-foreground">{title}</p>
+      <p className="mt-2 text-2xl font-bold text-foreground">{fmt(value)}</p>
+      <p className="mt-1 text-xs text-muted-foreground">{note}</p>
+    </div>
+  );
+}
+
 // ─── Component ─────────────────────────────────────────────────
 export default function Dashboard() {
   const {
     bachurim, incomes, expenses, askanimIncomes, fundraisers, globalSettings,
+    basketProducts,
   } = useData();
   const { navigateTo } = useNavigation();
 
@@ -68,44 +97,48 @@ export default function Dashboard() {
     [incomes]
   );
 
+  // Everything about the money comes from one place, so that no screen can
+  // disagree with another about whose a shekel is.
+  const money = useMemo(() => computeMoney({
+    bachurim, incomes, askanimIncomes, expenses,
+    products: basketProducts, minimum: min,
+    openingBalance: globalSettings.openingBalance,
+  }), [bachurim, incomes, askanimIncomes, expenses, basketProducts, min, globalSettings.openingBalance]);
+
   // ── derived per-bachur stats ────────────────────────────────
   const stats = useMemo(() => {
     const active = bachurim.filter((b) => !b.married);
     const married = bachurim.filter((b) => b.married);
+    const { pockets, expected } = money;
 
-    const cappedSum = active.reduce(
-      (s, b) => s + Math.min(bachurTotal(b), min), 0
-    );
-    const excessSum = active.reduce(
-      (s, b) => s + Math.max(0, bachurTotal(b) - min), 0
-    );
+    const cappedSum = pockets.salimFromBachurim;
+    const excessSum = pockets.amutaExcess;
+    const incomesSum = pockets.amutaDonations;
+    const askanimSum = pockets.amutaAskanim;
 
-    const incomesSum = generalIncomes.reduce((s, i) => s + (i.amount || 0), 0);
-    const askanimSum = askanimIncomes.reduce((s, i) => s + (i.amount || 0), 0);
+    // Money a bachur gave stays in the books after he marries — it is still
+    // in the bank, and the basket it paid for is an expense of its own.
+    const marriedSum = married.reduce((s, b) => s + bachurTotal(b), 0);
+    const otherIncomes = incomesSum + askanimSum + excessSum + marriedSum + pockets.amutaOpening;
+    const totalIncome = pockets.totalIncome;
 
-    const otherIncomes = incomesSum + askanimSum + excessSum;
-    const totalIncome = cappedSum + otherIncomes;
-
-    // Card B – frozen baskets (eligible & not married)
     const eligible = active.filter((b) => bachurTotal(b) >= min && min > 0);
-    const frozenFromBachurim = eligible.length * min;
-    const frozenFromAmuta = eligible.length * amutaSupplement;
-    const frozenTotal = frozenFromBachurim + frozenFromAmuta;
+    const frozenFromBachurim = pockets.salimFromBachurim;
+    const frozenFromAmuta = pockets.salimAllocations;
+    const frozenTotal = pockets.salimTotal;
 
-    // Card C – expenses
-    const totalExpenses = expenses.reduce((s, e) => s + (e.amount || 0), 0);
+    const totalExpenses = pockets.totalExpenses;
 
-    // Card D – expected expenses (eligible & not yet received basket)
     const expectedList = eligible.filter((b) => !b.receivedBasket);
-    const expectedTotal = expectedList.length * basketCost;
+    const expectedTotal = expected.allocated;
 
     return {
       active, married, cappedSum, excessSum, incomesSum, askanimSum,
-      otherIncomes, totalIncome,
+      marriedSum, otherIncomes, totalIncome,
       eligible, frozenFromBachurim, frozenFromAmuta, frozenTotal,
       totalExpenses, expectedList, expectedTotal,
     };
-  }, [bachurim, generalIncomes, askanimIncomes, expenses, min, basketCost, amutaSupplement]);
+  }, [bachurim, money, min]);
 
   const balance = stats.totalIncome - stats.totalExpenses;
   const balanceWithExpected = balance - stats.expectedTotal;
@@ -184,6 +217,91 @@ export default function Dashboard() {
             </button>
           );
         })}
+      </div>
+
+      {/* ─── The two pockets ─── */}
+      <div className="mt-8">
+        <h3 className="text-lg font-bold text-foreground mb-1">שני הכיסים</h3>
+        <p className="text-sm text-muted-foreground mb-4">
+          אותו כסף בבנק, מחולק לפי מי שהוא שייך לו. כיס הסלים הוא כסף שכבר
+          הובטח; רק "פנוי לעמותה" הוא כסף שאפשר להשתמש בו.
+        </p>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="rounded-xl border border-border bg-card p-5">
+            <p className="text-sm font-medium text-muted-foreground mb-3">כיס הסלים</p>
+            <PocketRow label="כסף הבחורים (עד המינימום)" value={money.pockets.salimFromBachurim} />
+            <PocketRow label="הוקצה לזכאים" value={money.pockets.salimAllocations} />
+            <PocketRow label="חוב לחנויות על סלים שנמסרו" value={money.pockets.salimOwedToShops} />
+            <div className="mt-3 border-t border-border pt-2 flex justify-between">
+              <span className="text-sm font-semibold">סה"כ</span>
+              <span className="text-lg font-bold">{fmt(money.pockets.salimTotal)}</span>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-border bg-card p-5">
+            <p className="text-sm font-medium text-muted-foreground mb-3">כיס העמותה</p>
+            <PocketRow label="פרויקט עסקנים" value={money.pockets.amutaAskanim} />
+            <PocketRow label="תרומות והכנסות" value={money.pockets.amutaDonations} />
+            <PocketRow label="עודפי בחורים מעל המינימום" value={money.pockets.amutaExcess} />
+            {money.pockets.amutaOpening > 0 && (
+              <PocketRow label="יתרת פתיחה" value={money.pockets.amutaOpening} />
+            )}
+            <PocketRow label="הוקצה לסלים" value={-money.pockets.amutaLentOut} />
+            {money.pockets.openShopDebts > 0 && (
+              <PocketRow label="חוב פתוח לחנויות" value={-money.pockets.openShopDebts} />
+            )}
+          </div>
+
+          <div className={`rounded-xl border p-5 ${
+            money.pockets.amutaFree < 0
+              ? "border-red-300 bg-red-50 dark:border-red-900 dark:bg-red-950/30"
+              : "border-green-300 bg-green-50 dark:border-green-900 dark:bg-green-950/30"
+          }`}>
+            <p className="text-sm font-medium text-muted-foreground mb-3">כמה כסף באמת פנוי</p>
+            <p className={`text-4xl font-bold ${
+              money.pockets.amutaFree < 0 ? "text-red-600" : "text-green-700 dark:text-green-500"
+            }`}>
+              {fmt(money.pockets.amutaFree)}
+            </p>
+            <p className="mt-3 text-xs text-muted-foreground">
+              בבנק {fmt(money.pockets.bank)} · מתוכם {fmt(money.pockets.salimTotal)} מובטחים
+            </p>
+            {money.pockets.amutaFree < 0 && (
+              <p className="mt-3 text-sm font-semibold text-red-600">
+                ✗ העמותה התחייבה על יותר סלים ממה שיש לה
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* ─── What is still to come ─── */}
+      <div className="mt-8">
+        <h3 className="text-lg font-bold text-foreground mb-1">מה עוד צפוי לצאת</h3>
+        <p className="text-sm text-muted-foreground mb-4">
+          שלושה שלבים שונים, ואסור לערבב ביניהם — רק השניים האחרונים הם כסף
+          ששמור בפועל.
+        </p>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <StageCard
+            title="מתקרבים למינימום"
+            note={`${money.expected.approachingCount} בחורים · תחזית בלבד, לא הוקצה`}
+            value={money.expected.approaching}
+            tone="muted"
+          />
+          <StageCard
+            title="הוקצה — זכאים ללא סל"
+            note={`${money.expected.allocatedCount} בחורים · הכסף כבר שמור בכיס הסלים`}
+            value={money.expected.allocated}
+            tone="amber"
+          />
+          <StageCard
+            title="חוב לחנויות"
+            note={`${money.expected.shopDebtCount} סלים נמסרו וטרם שולמו`}
+            value={money.expected.shopDebt}
+            tone="red"
+          />
+        </div>
       </div>
 
       {/* ─── Card A modal ─── */}

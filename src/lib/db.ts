@@ -139,6 +139,11 @@ export interface GlobalSettingsData {
    *  eligible for a basket, so a report about last month has to be read
    *  against the minimum that was in force then and not against today's. */
   minimumHistory: { date: string; oldMin: number; newMin: number }[];
+  /** What was in the bank on the day the books were opened. Money that came
+   *  in before the system did is otherwise invisible, and every figure that
+   *  asks how much the amuta really holds would start out wrong. */
+  openingBalance: number;
+  openingBalanceDate?: string;
   lastClassUpgrade: { date: string; type: string } | null;
   classUpgradeHistory: { date: string; type: string }[];
 }
@@ -475,6 +480,8 @@ export async function fetchGlobalSettings(): Promise<GlobalSettingsData> {
     basketCostHistory: [],
     minimumForBasket: 5000,
     minimumHistory: [],
+    openingBalance: 0,
+    openingBalanceDate: undefined,
     lastClassUpgrade: null,
     classUpgradeHistory: [],
   };
@@ -487,6 +494,8 @@ export async function fetchGlobalSettings(): Promise<GlobalSettingsData> {
     basketCostHistory: (map.get("basketCostHistory") as any[]) ?? defaults.basketCostHistory,
     minimumForBasket: (map.get("minimumForBasket") as number) ?? defaults.minimumForBasket,
     minimumHistory: (map.get("minimumHistory") as any[]) ?? defaults.minimumHistory,
+    openingBalance: (map.get("openingBalance") as number) ?? defaults.openingBalance,
+    openingBalanceDate: (map.get("openingBalanceDate") as string) ?? undefined,
     lastClassUpgrade: (map.get("lastClassUpgrade") as any) ?? defaults.lastClassUpgrade,
     classUpgradeHistory: (map.get("classUpgradeHistory") as any[]) ?? defaults.classUpgradeHistory,
   };
@@ -499,6 +508,8 @@ export async function saveGlobalSettingsToDb(settings: GlobalSettingsData): Prom
     { key: "basketCostHistory", value: settings.basketCostHistory },
     { key: "minimumForBasket", value: settings.minimumForBasket },
     { key: "minimumHistory", value: settings.minimumHistory },
+    { key: "openingBalance", value: settings.openingBalance },
+    { key: "openingBalanceDate", value: settings.openingBalanceDate ?? null },
     { key: "lastClassUpgrade", value: settings.lastClassUpgrade },
     { key: "classUpgradeHistory", value: settings.classUpgradeHistory },
   ];

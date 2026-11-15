@@ -73,6 +73,8 @@ interface GlobalSettingsData {
   basketCostHistory: BasketCostEntry[];
   minimumForBasket: number;
   minimumHistory: MinimumEntry[];
+  openingBalance: number;
+  openingBalanceDate?: string;
   lastClassUpgrade: ClassUpgradeLog | null;
   classUpgradeHistory: ClassUpgradeLog[];
 }
@@ -86,6 +88,7 @@ function getDefaults(): GlobalSettingsData {
     basketCostHistory: [],
     minimumForBasket: 5000,
     minimumHistory: [],
+    openingBalance: 0,
     lastClassUpgrade: null,
     classUpgradeHistory: [],
   };
@@ -147,6 +150,7 @@ export default function GlobalSettings({ triggerRef, onNavigateToTab }: { trigge
   const [open, setOpen] = useState(false);
   const [settings, setSettings] = useState<GlobalSettingsData>(getDefaults());
   const [newMinimum, setNewMinimum] = useState("");
+  const [newOpening, setNewOpening] = useState("");
   const [resetMode, setResetMode] = useState<null | "full" | "amounts">(null);
   const [confirmStep, setConfirmStep] = useState<0 | 1 | 2>(0);
   const [backup, setBackup] = useState<DataBackup | null>(null);
@@ -158,6 +162,7 @@ export default function GlobalSettings({ triggerRef, onNavigateToTab }: { trigge
       const loaded = loadSettings();
       setSettings(loaded);
       setNewMinimum(String(loaded.minimumForBasket));
+      setNewOpening(String(loaded.openingBalance || 0));
       setBackup(loadBackup());
     }
   }, [open]);
@@ -187,6 +192,22 @@ export default function GlobalSettings({ triggerRef, onNavigateToTab }: { trigge
     saveSettings(updated);
     setSettings(updated);
     toast.success(`סכום מינימום לזכאות עודכן ל-${formatCurrency(amount)}`);
+  };
+
+  const handleSaveOpening = () => {
+    const amount = Number(newOpening);
+    if (!Number.isFinite(amount) || amount < 0) {
+      toast.error("יש להזין סכום תקין");
+      return;
+    }
+    const updated: GlobalSettingsData = {
+      ...settings,
+      openingBalance: amount,
+      openingBalanceDate: settings.openingBalanceDate || new Date().toISOString(),
+    };
+    saveSettings(updated);
+    setSettings(updated);
+    toast.success(`יתרת הפתיחה נשמרה: ${formatCurrency(amount)}`);
   };
 
   const handleUpgradeClasses = () => {
@@ -394,6 +415,43 @@ export default function GlobalSettings({ triggerRef, onNavigateToTab }: { trigge
                 </div>
               </div>
             )}
+          </section>
+
+          <Separator />
+
+          {/* ===== Opening balance ===== */}
+          <section>
+            <h3 className="text-lg font-semibold text-foreground mb-3">יתרת פתיחה בבנק</h3>
+            <p className="text-sm text-muted-foreground mb-3">
+              כמה כסף היה בחשבון ביום שהתחלתם לנהל כאן. בלי זה, כסף שנכנס לפני
+              המערכת לא נספר בשום מקום, וכל חישוב של "כמה כסף פנוי לעמותה" יֵצא
+              נמוך מהאמת.
+              <br />
+              <strong>חשוב:</strong> אם תזינו גם את ההפקדות של הבחורים בנפרד —
+              יתרת הפתיחה צריכה להיות <strong>מה שיש בבנק פחות סכום ההפקדות
+              שהוזנו</strong>, אחרת אותו כסף ייספר פעמיים.
+            </p>
+            <div className="flex items-end gap-3 flex-wrap">
+              <div className="flex-1 min-w-[180px]">
+                <Label htmlFor="openingBalance">סכום</Label>
+                <Input
+                  id="openingBalance"
+                  type="number"
+                  value={newOpening}
+                  onChange={(e) => setNewOpening(e.target.value)}
+                  min={0}
+                  className="mt-1"
+                />
+              </div>
+              <Button onClick={handleSaveOpening} className="gap-1.5">
+                <Save className="h-4 w-4" />
+                שמור
+              </Button>
+            </div>
+            <p className="mt-2 text-xs text-muted-foreground">
+              ערך נוכחי: <span className="font-semibold text-foreground">{formatCurrency(settings.openingBalance || 0)}</span>
+              {settings.openingBalanceDate && <> · נקבע ב-{formatDate(settings.openingBalanceDate)}</>}
+            </p>
           </section>
 
           <Separator />
