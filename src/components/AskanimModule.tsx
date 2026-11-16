@@ -126,6 +126,9 @@ export default function AskanimModule() {
   const [editTarget, setEditTarget] = useState<AskanimIncome | null>(null);
   const [panelBachur, setPanelBachur] = useState<Bachur | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<AskanimIncome | null>(null);
+  const [skippedReport, setSkippedReport] = useState<
+    { name: string; amount: number; reason: string }[] | null
+  >(null);
   const [removeFromAskanimTarget, setRemoveFromAskanimTarget] = useState<Bachur | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -264,6 +267,10 @@ export default function AskanimModule() {
 
       let imported = 0;
       let skipped = 0;
+      // A silent count of skipped rows is no help at all: the money is simply
+      // missing and there is nothing to go on. Every skipped row is kept with
+      // the reason it was skipped, and shown afterwards.
+      const skippedRows: { name: string; amount: number; reason: string }[] = [];
       const newIncomes: AskanimIncome[] = [];
 
       for (const row of rows) {
@@ -272,15 +279,43 @@ export default function AskanimModule() {
         const date = String(row["תאריך"] || today()).trim();
         const notes = String(row["הערות"] || "").trim();
 
-        if (!name || !amount) { skipped++; continue; }
+        if (!name || !amount) {
+          skipped++;
+          skippedRows.push({ name: name || "(ללא שם)", amount, reason: !name ? "אין שם בשורה" : "אין סכום" });
+          continue;
+        }
 
         if (!askanimNames.has(name)) {
           skipped++;
+          const existsAtAll = currentBachurim.some((b) => b.name === name);
+          skippedRows.push({
+            name, amount,
+            reason: existsAtAll
+              ? "קיים כבחור אבל לא מסומן כעסקן"
+              : "אין בחור בשם הזה במערכת",
+          });
           continue;
         }
 
         const bachur = currentBachurim.find((b) => b.name === name && b.inAskanim);
-        if (!bachur) { skipped++; continue; }
+        if (!bachur) {
+          skipped++;
+          skippedRows.push({ name, amount, reason: "לא נמצא" });
+          continue;
+        }
+
+        // Fixing a few skipped rows means uploading the same file again, so
+        // the rows that already went in must not go in twice.
+        const already = incomes.some(
+          (i) => i.bachurId === bachur.id && i.date === date && Number(i.amount) === amount
+        ) || newIncomes.some(
+          (i) => i.bachurId === bachur.id && i.date === date && Number(i.amount) === amount
+        );
+        if (already) {
+          skipped++;
+          skippedRows.push({ name, amount, reason: "כבר קיים — לא נוסף פעמיים" });
+          continue;
+        }
 
         const income: AskanimIncome = {
           id: crypto.randomUUID(),
@@ -302,6 +337,7 @@ export default function AskanimModule() {
       }
 
       toast.success(`יובאו ${imported} רשומות${skipped > 0 ? `, ${skipped} דולגו` : ""}`);
+      if (skippedRows.length > 0) setSkippedReport(skippedRows);
     } catch {
       toast.error("שגיאה בקריאת הקובץ");
     }
@@ -309,8 +345,46 @@ export default function AskanimModule() {
   }
 
   // ─── Render ─────────────────────────────────────────────────
+  const skippedTotal = (skippedReport || []).reduce((s, r) => s + (r.amount || 0), 0);
+
   return (
     <div className="p-6 space-y-6" dir="rtl">
+      {/* What the import left out, and why */}
+      <Dialog open={!!skippedReport} onOpenChange={(o) => !o && setSkippedReport(null)}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>שורות שלא נכנסו</DialogTitle>
+            <DialogDescription>
+              {skippedReport?.length} שורות דולגו, בסך {skippedTotal.toLocaleString("he-IL")} ₪.
+              תקן את הסיבה והעלה את הקובץ שוב — רק השורות האלה ייכנסו, הקיימות לא יוכפלו.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-[50vh] overflow-y-auto rounded-lg border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="text-right">שם</TableHead>
+                  <TableHead className="text-right">סכום</TableHead>
+                  <TableHead className="text-right">הסיבה</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {(skippedReport || []).map((r, i) => (
+                  <TableRow key={i}>
+                    <TableCell className="font-medium">{r.name}</TableCell>
+                    <TableCell>{(r.amount || 0).toLocaleString("he-IL")} ₪</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">{r.reason}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+          <DialogFooter>
+            <DialogClose asChild><Button>סגור</Button></DialogClose>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-4">
         <h1 className="text-2xl font-bold text-[hsl(var(--primary))]">פרויקט עסקנים</h1>
