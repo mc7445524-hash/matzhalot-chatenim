@@ -181,6 +181,34 @@ export default function BachurimModule() {
   const [confirmAction, setConfirmAction] = useState<{ type: string; bachur: Bachur; date?: string } | null>(null);
   const [deleteBachurId, setDeleteBachurId] = useState<string | null>(null);
 
+  // ─── Edit name / class ──────────────────────────
+  const [editBachurOpen, setEditBachurOpen] = useState(false);
+  const [editName, setEditName] = useState("");
+  const [editClass, setEditClass] = useState("א");
+
+  const handleSaveBachurEdit = () => {
+    if (!selectedBachur) return;
+    const name = editName.trim();
+    if (!name) { toast.error("צריך להזין שם"); return; }
+    // Two bachurim sharing a name are one bachur as far as every other
+    // screen is concerned — the money, the baskets and the imports all find
+    // a man by his name — so the clash has to be caught here.
+    const clash = bachurim.find(
+      (x) => x.id !== selectedBachur.id && x.name.trim() === name
+    );
+    if (clash) {
+      toast.error(`כבר יש בחור בשם "${name}" (שיעור ${clash.classLevel}). הוסף מילה שמבדילה ביניהם`);
+      return;
+    }
+    const updated = bachurim.map((x) =>
+      x.id === selectedBachur.id ? { ...x, name, classLevel: editClass } : x
+    );
+    persist(updated);
+    setSelectedBachur(updated.find((x) => x.id === selectedBachur.id) || null);
+    setEditBachurOpen(false);
+    toast.success("הפרטים עודכנו");
+  };
+
   const handleDeleteBachur = () => {
     if (!deleteBachurId) return;
     const b = bachurim.find((x) => x.id === deleteBachurId);
@@ -250,6 +278,14 @@ export default function BachurimModule() {
 
   const handleAdd = () => {
     if (!newName.trim()) { toast.error("יש להזין שם"); return; }
+    // Catch the clash at the door. Added anyway, two bachurim of one name are
+    // one bachur everywhere else, and the second one's money lands on the
+    // first without a word of warning.
+    const clash = bachurim.find((x) => x.name.trim() === newName.trim());
+    if (clash) {
+      toast.error(`כבר יש בחור בשם "${clash.name}" (שיעור ${clash.classLevel}). הוסף מילה שמבדילה ביניהם`);
+      return;
+    }
     const b: Bachur = {
       id: crypto.randomUUID(),
       sku: generateSku(bachurim),
@@ -915,6 +951,42 @@ export default function BachurimModule() {
         </DialogContent>
       </Dialog>
 
+      {/* ─── Edit name / class ───────────────── */}
+      <Dialog open={editBachurOpen} onOpenChange={setEditBachurOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>עריכת פרטי בחור</DialogTitle>
+            <DialogDescription>
+              שינוי השם משנה אותו בכל המערכת — בהכנסות, בסלים ובדוחות.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="editBachurName">שם מלא</Label>
+              <Input
+                id="editBachurName"
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <Label>שיעור</Label>
+              <Select value={editClass} onValueChange={setEditClass}>
+                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {CLASS_LEVELS.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <DialogClose asChild><Button variant="outline">ביטול</Button></DialogClose>
+            <Button onClick={handleSaveBachurEdit}>שמור</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* ─── Import Dialog ───────────────────── */}
       <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
         <DialogContent className="max-w-lg">
@@ -1083,7 +1155,22 @@ export default function BachurimModule() {
             return (
               <>
                 <SheetHeader>
-                  <SheetTitle className="text-xl">{b.name}</SheetTitle>
+                  <div className="flex items-center gap-2">
+                    <SheetTitle className="text-xl">{b.name}</SheetTitle>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-7 w-7 shrink-0"
+                      title="ערוך שם ושיעור"
+                      onClick={() => {
+                        setEditName(b.name);
+                        setEditClass(CLASS_LEVELS.includes(b.classLevel) ? b.classLevel : "א");
+                        setEditBachurOpen(true);
+                      }}
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
                   <SheetDescription>מק"ט: {b.sku}</SheetDescription>
                 </SheetHeader>
                 <div className="mt-6 space-y-6">
