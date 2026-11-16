@@ -261,9 +261,24 @@ export default function AskanimModule() {
       const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws);
 
       const currentBachurim = loadBachurim();
-      const askanimNames = new Set(
-        currentBachurim.filter((b) => b.inAskanim).map((b) => b.name)
-      );
+      // The same man is written ‎בר"ב‎ in one file and ‎בר׳׳ב‎ in another, with
+      // a stray space as often as not, and an exact match drops his money on
+      // the floor. Quotes and spaces are ignored — but only among the
+      // askanim, and only when exactly one of them answers to the name, so a
+      // guess can never put money on the wrong man.
+      const loose = (s: string) =>
+        s.replace(/["'׳״`‘’“”]/g, "").replace(/\s+/g, "");
+      const byLoose = new Map<string, Bachur[]>();
+      for (const b of currentBachurim.filter((x) => x.inAskanim)) {
+        const k = loose(b.name);
+        byLoose.set(k, [...(byLoose.get(k) || []), b]);
+      }
+      const findAskan = (name: string): Bachur | undefined => {
+        const exact = currentBachurim.find((b) => b.name === name && b.inAskanim);
+        if (exact) return exact;
+        const near = byLoose.get(loose(name));
+        return near && near.length === 1 ? near[0] : undefined;
+      };
 
       let imported = 0;
       let skipped = 0;
@@ -285,22 +300,19 @@ export default function AskanimModule() {
           continue;
         }
 
-        if (!askanimNames.has(name)) {
-          skipped++;
-          const existsAtAll = currentBachurim.some((b) => b.name === name);
-          skippedRows.push({
-            name, amount,
-            reason: existsAtAll
-              ? "קיים כבחור אבל לא מסומן כעסקן"
-              : "אין בחור בשם הזה במערכת",
-          });
-          continue;
-        }
-
-        const bachur = currentBachurim.find((b) => b.name === name && b.inAskanim);
+        const bachur = findAskan(name);
         if (!bachur) {
           skipped++;
-          skippedRows.push({ name, amount, reason: "לא נמצא" });
+          const existsAtAll = currentBachurim.some((b) => loose(b.name) === loose(name));
+          const ambiguous = (byLoose.get(loose(name)) || []).length > 1;
+          skippedRows.push({
+            name, amount,
+            reason: ambiguous
+              ? "יש יותר מעסקן אחד בשם הזה — צריך להוסיף הכנסה ידנית"
+              : existsAtAll
+                ? "קיים כבחור אבל לא מסומן כעסקן"
+                : "אין בחור בשם הזה במערכת",
+          });
           continue;
         }
 
@@ -320,7 +332,9 @@ export default function AskanimModule() {
         const income: AskanimIncome = {
           id: crypto.randomUUID(),
           bachurId: bachur.id,
-          bachurName: name,
+          // The system's spelling, not the file's, so the record reads the
+          // same as the bachur it belongs to.
+          bachurName: bachur.name,
           date,
           amount,
           notes,
