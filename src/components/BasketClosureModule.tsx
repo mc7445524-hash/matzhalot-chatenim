@@ -126,6 +126,9 @@ export default function BasketClosureModule() {
     .filter((d) => withDebts.has(d.id))
     .reduce((s, d) => s + (d.basketGapAmount || 0), 0);
   const expectedTotal = pickedExpected + debtExpected;
+  // Before an amount is typed the invoice is not "0 and short by the whole
+  // basket" — it is simply not entered yet, so the question stays hidden.
+  const typed = payAmount.trim() !== "";
   const actual = Number(payAmount) || 0;
   const shortfall = Math.max(0, expectedTotal - actual);
   const overpaid = Math.max(0, actual - expectedTotal);
@@ -399,10 +402,22 @@ export default function BasketClosureModule() {
                     <TableCell className="text-xs">{r.names.join(", ")}</TableCell>
                     <TableCell>{fmt(r.expected)}</TableCell>
                     <TableCell>{fmt(r.paid)}</TableCell>
-                    <TableCell className={r.gap < 0 ? "text-green-600 font-semibold" : "text-amber-600 font-semibold"}>
-                      {r.gap < 0
-                        ? `${fmt(-r.gap)} לטובת העמותה`
-                        : `${fmt(r.gap)} מהעמותה`}
+                    {/* A shop that charged less is only profit once it is a
+                        discount. Called a debt, the money is still owed. */}
+                    <TableCell
+                      className={
+                        r.gap > 0
+                          ? "text-amber-600 font-semibold"
+                          : r.expense.basketGapKind === "debt"
+                            ? "text-amber-600 font-semibold"
+                            : "text-green-600 font-semibold"
+                      }
+                    >
+                      {r.gap > 0
+                        ? `${fmt(r.gap)} יצאו מהעמותה`
+                        : r.expense.basketGapKind === "debt"
+                          ? `${fmt(-r.gap)} עדיין חייבים לחנות`
+                          : `${fmt(-r.gap)} הנחה — נשאר בעמותה`}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -516,7 +531,7 @@ export default function BasketClosureModule() {
                   <span>החשבונית בפועל</span>
                   <span className="font-semibold">{fmt(actual)}</span>
                 </div>
-                {shortfall > 0 && (
+                {typed && shortfall > 0 && (
                   <div className="flex justify-between text-green-700">
                     <span>החנות גבתה פחות</span>
                     <span className="font-bold">{fmt(shortfall)}</span>
@@ -530,7 +545,7 @@ export default function BasketClosureModule() {
                 )}
               </div>
 
-              {shortfall > 0 && (
+              {typed && shortfall > 0 && (
                 <div className="rounded-lg border p-3 space-y-2">
                   <p className="text-sm font-medium flex items-center gap-1.5">
                     <AlertTriangle className="h-4 w-4 text-amber-600" />
