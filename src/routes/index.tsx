@@ -6,6 +6,7 @@ import Dashboard from "@/components/Dashboard";
 import BachurimModule from "@/components/BachurimModule";
 import AskanimModule from "@/components/AskanimModule";
 import ExcessModule from "@/components/ExcessModule";
+import BasketClosureModule from "@/components/BasketClosureModule";
 import IncomesModule from "@/components/IncomesModule";
 import ExpensesModule from "@/components/ExpensesModule";
 import DebtsModule from "@/components/DebtsModule";
@@ -45,6 +46,7 @@ const tabTitles: Record<TabId, string> = {
   expenses: "הוצאות",
   debts: "חובות",
   "basket-cost": "עלות הסל",
+  "basket-closure": "סגירת סלים",
   tasks: "משימות",
   search: "חיפוש",
   reports: "דוחות",
@@ -166,6 +168,8 @@ function AuthenticatedAppInner() {
           <DebtsModule />
         ) : activeTab === "basket-cost" ? (
           <BasketCostModule onOpenSettings={handleOpenSettings} />
+        ) : activeTab === "basket-closure" ? (
+          <BasketClosureModule />
         ) : activeTab === "tasks" ? (
           <TasksModule />
         ) : activeTab === "search" ? (

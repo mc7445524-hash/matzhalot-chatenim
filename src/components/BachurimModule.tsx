@@ -140,6 +140,25 @@ function addIncome(description: string, amount: number) {
   } catch { /* silent */ }
 }
 
+/** The shops already paid for this bachur's basket, by name. Empty means the
+ *  basket can still be undone without stranding a payment. */
+function paidShopsFor(bachurId: string): string[] {
+  try {
+    const expenses = JSON.parse(localStorage.getItem("expenses") || "[]");
+    const products = JSON.parse(localStorage.getItem("basketProducts") || "[]");
+    const nameById = new Map(
+      (Array.isArray(products) ? products : []).map((p: any) => [String(p?.id), String(p?.name || "")])
+    );
+    const names = new Set<string>();
+    for (const e of Array.isArray(expenses) ? expenses : []) {
+      if (!e?.basketProductId) continue;
+      if (!(e.basketBachurIds || []).includes(bachurId)) continue;
+      names.add(nameById.get(String(e.basketProductId)) || "חנות");
+    }
+    return [...names];
+  } catch { return []; }
+}
+
 function addToAskanim(name: string, sku: string) {
   try {
     const list = JSON.parse(localStorage.getItem("askanim") || "[]");
@@ -313,6 +332,16 @@ export default function BachurimModule() {
 
   // ─── Cancel Closed ──────────────────────────────
   const handleCancelClosed = (b: Bachur) => {
+    // Once a shop has been paid for this basket the money has left the bank.
+    // Undoing the basket would leave that payment attached to nobody, so the
+    // books would stop adding up with no way to see why.
+    if (b.receivedBasket && paidShopsFor(b.id).length > 0) {
+      toast.error(
+        `אי אפשר לבטל — כבר שולם לחנויות על הסל של ${b.name} (${paidShopsFor(b.id).join(", ")})`
+      );
+      setConfirmAction(null);
+      return;
+    }
     // Remove auto-generated income "תרומה – name"
     if (b.married && !b.receivedBasket && totalIncome(b) > 0) {
       try {

@@ -25,6 +25,7 @@ const tabs = [
   { id: "expenses", label: "הוצאות" },
   { id: "debts", label: "חובות" },
   { id: "basket-cost", label: "עלות הסל" },
+  { id: "basket-closure", label: "סגירת סלים" },
   { id: "tasks", label: "משימות" },
   { id: "search", label: "חיפוש" },
   { id: "reports", label: "דוחות" },

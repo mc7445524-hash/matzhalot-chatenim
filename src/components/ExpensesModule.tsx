@@ -85,6 +85,32 @@ function loadBasketShops(): { id: string; name: string; active: boolean }[] {
   } catch { return []; }
 }
 
+/** A payment to a shop is one expense, never two — but the money comes out of
+ *  two different pockets. This says how the single amount divides, so an
+ *  invoice above or below what the baskets locked is visible without
+ *  inventing a second row that would double-count it. */
+function basketSplit(exp: any): { salim: number; amuta: number; names: string[] } | null {
+  if (!exp?.basketProductId || !(exp.basketBachurIds || []).length) return null;
+  try {
+    const bachurim = JSON.parse(localStorage.getItem("bachurim") || "[]");
+    const byId = new Map((Array.isArray(bachurim) ? bachurim : []).map((b: any) => [String(b?.id), b]));
+    let expected = 0;
+    const names: string[] = [];
+    for (const id of exp.basketBachurIds) {
+      const b: any = byId.get(String(id));
+      if (!b) continue;
+      names.push(String(b.name || ""));
+      const share = (b.basketBreakdownAtTime || []).find(
+        (s: any) => String(s?.productId) === String(exp.basketProductId)
+      );
+      expected += Number(share?.cost) || 0;
+    }
+    const amount = Number(exp.amount) || 0;
+    const salim = Math.min(amount, expected);
+    return { salim, amuta: amount - salim, names };
+  } catch { return null; }
+}
+
 function loadCategories(key: string, defaults: string[]): string[] {
   try {
     const raw = localStorage.getItem(key);
@@ -638,7 +664,21 @@ export default function ExpensesModule() {
                       </Badge>
                     )}
                   </TableCell>
-                  <TableCell>{exp.amount.toLocaleString("he-IL")} ₪</TableCell>
+                  <TableCell>
+                    {exp.amount.toLocaleString("he-IL")} ₪
+                    {(() => {
+                      const split = basketSplit(exp);
+                      if (!split || split.amuta === 0) return null;
+                      return (
+                        <div className="text-[11px] leading-tight text-muted-foreground mt-0.5">
+                          <div>{split.salim.toLocaleString("he-IL")} ₪ מכיס הסלים</div>
+                          <div className={split.amuta > 0 ? "text-amber-600" : ""}>
+                            {split.amuta.toLocaleString("he-IL")} ₪ מהעמותה
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </TableCell>
                   <TableCell>{exp.contactPerson || "—"}</TableCell>
                   <TableCell className="max-w-[150px] truncate">{exp.notes}</TableCell>
                   <TableCell className="text-center">
