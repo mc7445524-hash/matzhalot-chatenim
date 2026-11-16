@@ -521,6 +521,28 @@ export async function saveGlobalSettingsToDb(settings: GlobalSettingsData): Prom
   }
 }
 
+/** Has this project ever had its localStorage carried up to Supabase?
+ *
+ *  Without this flag an empty cloud is indistinguishable from a cloud that
+ *  was never filled, so clearing the data and reloading would hand the old
+ *  rows straight back from whatever browser still had a copy. Once the flag
+ *  is set, empty means empty. */
+export async function fetchMigrationDone(): Promise<boolean> {
+  if (isDemo()) return true;
+  const { data, error } = await supabase
+    .from("global_settings").select("value").eq("key", "migrationDone").maybeSingle();
+  if (error || !data) return false;
+  return data.value === true;
+}
+
+export async function markMigrationDone(): Promise<void> {
+  if (isDemo()) return;
+  await supabase.from("global_settings").upsert(
+    { key: "migrationDone", value: true as any, updated_at: new Date().toISOString() },
+    { onConflict: "key" }
+  );
+}
+
 export async function fetchFundraisers(): Promise<string[]> {
   if (isDemo()) return demoRead<string[]>("fundraisers", []);
   const { data, error } = await supabase.from("fundraisers").select("*");

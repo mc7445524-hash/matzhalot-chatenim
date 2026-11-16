@@ -21,6 +21,7 @@ import {
   fetchBasketProducts, saveBasketProductsToDb,
   fetchGlobalSettings, saveGlobalSettingsToDb,
   fetchFundraisers, saveFundraisersToDb,
+  fetchMigrationDone, markMigrationDone,
   fetchExpenseCategories, saveExpenseCategoriesToDb,
 } from "@/lib/db";
 import { addActivityLog } from "@/lib/db";
@@ -211,6 +212,12 @@ export function bootstrapStorage(): Promise<void> {
       fetchExpenseCategories(),
     ]);
 
+    // Deleting everything leaves the cloud empty, which used to look exactly
+    // like a project that had never been uploaded — so the next load pushed
+    // the old rows back up from whichever browser still held them. After the
+    // first upload this flag is set, and empty means empty.
+    const migrationDone = await fetchMigrationDone();
+
     // 2. For each key: if cloud is empty AND local has data, migrate local→cloud.
     //    Otherwise, write cloud data into localStorage (cloud is source of truth).
     const migrationPromises: Promise<void>[] = [];
@@ -222,7 +229,7 @@ export function bootstrapStorage(): Promise<void> {
     ) => {
       const localRaw = localStorage.getItem(key);
       const localData = safeParse<T[]>(localRaw, []);
-      if (cloudData.length === 0 && localData.length > 0) {
+      if (!migrationDone && cloudData.length === 0 && localData.length > 0) {
         // Migrate local → cloud, keep local as-is
         migrationPromises.push(saver(localData));
         console.log(`[storageSync] Migrating ${localData.length} ${key} from localStorage → Supabase`);
@@ -247,7 +254,7 @@ export function bootstrapStorage(): Promise<void> {
         cloudGlobalSettings.basketCostHistory.length === 0 &&
         cloudGlobalSettings.classUpgradeHistory.length === 0 &&
         cloudGlobalSettings.lastClassUpgrade === null;
-      if (localRaw && cloudIsDefault) {
+      if (!migrationDone && localRaw && cloudIsDefault) {
         const localSettings = safeParse(localRaw, cloudGlobalSettings);
         migrationPromises.push(saveGlobalSettingsToDb(localSettings as any));
         console.log("[storageSync] Migrating globalSettings from localStorage → Supabase");
@@ -264,7 +271,7 @@ export function bootstrapStorage(): Promise<void> {
         cloudCats.salim.length === 8 && cloudCats.amuta.length === 6 &&
         cloudCats.salim.includes("גור");
       const localHasData = localSalim.length > 0 || localAmuta.length > 0;
-      if (localHasData && cloudIsDefault) {
+      if (!migrationDone && localHasData && cloudIsDefault) {
         migrationPromises.push(
           saveExpenseCategoriesToDb(
             localSalim.length > 0 ? localSalim : cloudCats.salim,
@@ -280,6 +287,12 @@ export function bootstrapStorage(): Promise<void> {
 
     if (migrationPromises.length > 0) {
       await Promise.all(migrationPromises);
+    }
+
+    // Whether anything needed carrying up or the cloud was already the
+    // source of truth, this project has now been through bootstrap once.
+    if (!migrationDone) {
+      await markMigrationDone().catch(console.error);
     }
 
     // 3. Patch localStorage so future writes auto-sync
