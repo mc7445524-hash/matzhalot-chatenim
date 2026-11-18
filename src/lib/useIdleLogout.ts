@@ -46,6 +46,11 @@ export function useIdleLogout(signOut: () => void | Promise<void>, enabled: bool
         if (firing.current) return;
         firing.current = true;
         toast.dismiss("idle-warning");
+        // signOut reloads the page, so a toast would never be seen. The
+        // reason is left where the sign-in screen can pick it up, in
+        // sessionStorage so it dies with the tab and cannot resurface days
+        // later as a mystery.
+        try { sessionStorage.setItem("idleLogout", "1"); } catch { /* noop */ }
         void signOut();
         return;
       }

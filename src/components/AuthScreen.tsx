@@ -12,6 +12,17 @@ type Mode = "signin" | "signup" | "forgot";
 export default function AuthScreen() {
   const { signIn, signUp, signOut, session, profileStatus, isAdmin } = useAuth();
   const [mode, setMode] = useState<Mode>("signin");
+  // Read once and cleared straight away: the notice belongs to this arrival
+  // at the sign-in screen, not to every refresh that follows it.
+  const [wasIdleLogout] = useState(() => {
+    try {
+      const flag = sessionStorage.getItem("idleLogout") === "1";
+      if (flag) sessionStorage.removeItem("idleLogout");
+      return flag;
+    } catch {
+      return false;
+    }
+  });
   const isPendingSession = !!session && !isAdmin && profileStatus !== "approved";
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -87,6 +98,16 @@ export default function AuthScreen() {
               : "שחזור סיסמה דרך המנהל"}
           </p>
         </div>
+
+        {wasIdleLogout && (
+          <div className="text-sm text-amber-900 bg-amber-50 border border-amber-200 px-4 py-3 rounded">
+            <strong>התנתקת אוטומטית</strong>
+            <div className="mt-1">
+              המערכת מתנתקת לבד אחרי 10 דקות ללא שימוש, כדי שמסך פתוח לא
+              יישאר חשוף. התחברו שוב כדי להמשיך.
+            </div>
+          </div>
+        )}
 
         {isPendingSession && (
           <div className="space-y-3">
