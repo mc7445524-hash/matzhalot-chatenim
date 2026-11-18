@@ -277,11 +277,11 @@ export function computeMoney(input: MoneyInput): MoneyState {
     .filter((e) => e.basketGapKind === "debt")
     .reduce((s, e) => s + (Number(e.basketGapAmount) || 0), 0);
 
-  const amutaFree = bank - salimTotal - openShopDebts;
+  // What the books alone would say is free. It is only used to work out
+  // which pocket a shortfall came out of; what the amuta can actually spend
+  // is `amutaFree` below, which answers to the bank and not to the books.
+  const amutaFreeOnBooks = bank - salimTotal - openShopDebts;
 
-  // Comparing only the total means a shekel filed under the wrong pocket
-  // still leaves the difference at zero. This catches money that is missing
-  // altogether, not money that is merely misfiled.
   // Measured once, then derived. Money entered afterwards raises the books
   // and the bank together, so a bachur's deposit leaves the hole where it
   // was while a donation closes it — without any rule that tells the two
@@ -299,7 +299,12 @@ export function computeMoney(input: MoneyInput): MoneyState {
   // what is left over bites into the bachurim's money, which does.
   const unexplained = bankDiff === null ? 0 : Math.max(0, -bankDiff);
   const missingFromAmuta =
-    actualBank === null ? null : Math.min(unexplained, Math.max(0, amutaFree));
+    actualBank === null ? null : Math.min(unexplained, Math.max(0, amutaFreeOnBooks));
+
+  // Once the bank has been read, free money is measured against the bank.
+  // Saying the amuta holds money its account does not have is the one error
+  // worth least: it is money he would go and spend.
+  const amutaFree = (actualBank ?? bank) - salimTotal - openShopDebts;
   // What has to be put back so that every shekel promised to a bachur is
   // actually in the account. A real donation arriving lowers this, and
   // rightly so: the cover really did improve. It does not lower the books

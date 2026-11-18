@@ -251,6 +251,9 @@ export default function Dashboard() {
             {money.pockets.openShopDebts > 0 && (
               <PocketRow label="חוב פתוח לחנויות" value={-money.pockets.openShopDebts} />
             )}
+            {money.pockets.bankDiff !== null && money.pockets.bankDiff !== 0 && (
+              <PocketRow label="חסר בבנק מול הספרים" value={money.pockets.bankDiff} />
+            )}
           </div>
 
           <div className={`rounded-xl border p-5 ${
@@ -265,7 +268,8 @@ export default function Dashboard() {
               {fmt(money.pockets.amutaFree)}
             </p>
             <p className="mt-3 text-xs text-muted-foreground">
-              בבנק {fmt(money.pockets.bank)} · מתוכם {fmt(money.pockets.salimTotal)} מובטחים
+              בבנק {fmt(money.pockets.actualBank ?? money.pockets.bank)} · מתוכם{" "}
+              {fmt(money.pockets.salimTotal)} מובטחים
             </p>
             {money.pockets.amutaFree < 0 && (
               <p className="mt-3 text-sm font-semibold text-red-600">
