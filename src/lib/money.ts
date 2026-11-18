@@ -37,6 +37,9 @@ export interface MoneyInput {
   /** What was in the bank on the day the books were opened, so that money
    *  which came in before the system did is not mistaken for nothing. */
   openingBalance?: number;
+  /** What the bank statement says today. Nothing is computed from it; it is
+   *  compared against `bank` so that a shortfall shows up on its own. */
+  actualBank?: number;
 }
 
 // ─── Per bachur ───────────────────────────────────────────────
@@ -98,6 +101,12 @@ export interface Pockets {
   amutaFree: number;
 
   bank: number;
+  /** The hand-typed bank figure, or null when none has been entered. */
+  actualBank: number | null;
+  /** actualBank - bank. Negative means money the books expect is not there.
+   *  Null when nothing was entered, so that "no answer" is never drawn as
+   *  a zero that looks like everything agrees. */
+  bankDiff: number | null;
   totalIncome: number;
   totalExpenses: number;
   /** Agreed with a shop but not yet handed over. */
@@ -262,12 +271,22 @@ export function computeMoney(input: MoneyInput): MoneyState {
 
   const amutaFree = bank - salimTotal - openShopDebts;
 
+  // Comparing only the total means a shekel filed under the wrong pocket
+  // still leaves the difference at zero. This catches money that is missing
+  // altogether, not money that is merely misfiled.
+  const actualBankRaw = input.actualBank;
+  const actualBank =
+    actualBankRaw === undefined || actualBankRaw === null || !Number.isFinite(Number(actualBankRaw))
+      ? null
+      : Number(actualBankRaw);
+  const bankDiff = actualBank === null ? null : actualBank - bank;
+
   const pockets: Pockets = {
     salimFromBachurim, salimAllocations, salimOwedToShops, salimTotal,
     amutaAskanim, amutaDonations, amutaExcess, amutaOpening,
     amutaLentOut: salimAllocations,
     amutaFree,
-    bank, totalIncome, totalExpenses, openShopDebts,
+    bank, actualBank, bankDiff, totalIncome, totalExpenses, openShopDebts,
   };
 
   // ── what is still to come ───────────────────────────────────

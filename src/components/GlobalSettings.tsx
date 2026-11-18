@@ -75,6 +75,8 @@ interface GlobalSettingsData {
   minimumHistory: MinimumEntry[];
   openingBalance: number;
   openingBalanceDate?: string;
+  actualBank?: number;
+  actualBankDate?: string;
   lastClassUpgrade: ClassUpgradeLog | null;
   classUpgradeHistory: ClassUpgradeLog[];
 }
@@ -151,6 +153,7 @@ export default function GlobalSettings({ triggerRef, onNavigateToTab }: { trigge
   const [settings, setSettings] = useState<GlobalSettingsData>(getDefaults());
   const [newMinimum, setNewMinimum] = useState("");
   const [newOpening, setNewOpening] = useState("");
+  const [newActualBank, setNewActualBank] = useState("");
   const [resetMode, setResetMode] = useState<null | "full" | "amounts">(null);
   const [confirmStep, setConfirmStep] = useState<0 | 1 | 2>(0);
   const [backup, setBackup] = useState<DataBackup | null>(null);
@@ -163,6 +166,11 @@ export default function GlobalSettings({ triggerRef, onNavigateToTab }: { trigge
       setSettings(loaded);
       setNewMinimum(String(loaded.minimumForBasket));
       setNewOpening(String(loaded.openingBalance || 0));
+      setNewActualBank(
+        loaded.actualBank === undefined || loaded.actualBank === null
+          ? ""
+          : String(loaded.actualBank)
+      );
       setBackup(loadBackup());
     }
   }, [open]);
@@ -196,7 +204,7 @@ export default function GlobalSettings({ triggerRef, onNavigateToTab }: { trigge
 
   const handleSaveOpening = () => {
     const amount = Number(newOpening);
-    if (!Number.isFinite(amount) || amount < 0) {
+    if (!Number.isFinite(amount)) {
       toast.error("יש להזין סכום תקין");
       return;
     }
@@ -208,6 +216,34 @@ export default function GlobalSettings({ triggerRef, onNavigateToTab }: { trigge
     saveSettings(updated);
     setSettings(updated);
     toast.success(`יתרת הפתיחה נשמרה: ${formatCurrency(amount)}`);
+  };
+
+  // Checking the books against the bank only works if the figure is the
+  // user's own reading of the statement. It is never derived from anything
+  // in the system, and the date travels with it so an old reading cannot be
+  // mistaken for today's.
+  const handleSaveActualBank = () => {
+    const raw = newActualBank.trim();
+    if (raw === "") {
+      const cleared: GlobalSettingsData = { ...settings, actualBank: undefined, actualBankDate: undefined };
+      saveSettings(cleared);
+      setSettings(cleared);
+      toast.success("הסכום נמחק — הבדיקה כבויה");
+      return;
+    }
+    const amount = Number(raw);
+    if (!Number.isFinite(amount)) {
+      toast.error("יש להזין סכום תקין");
+      return;
+    }
+    const updated: GlobalSettingsData = {
+      ...settings,
+      actualBank: amount,
+      actualBankDate: new Date().toISOString(),
+    };
+    saveSettings(updated);
+    setSettings(updated);
+    toast.success(`נשמר: ${formatCurrency(amount)}`);
   };
 
   const handleUpgradeClasses = () => {
@@ -451,6 +487,51 @@ export default function GlobalSettings({ triggerRef, onNavigateToTab }: { trigge
             <p className="mt-2 text-xs text-muted-foreground">
               ערך נוכחי: <span className="font-semibold text-foreground">{formatCurrency(settings.openingBalance || 0)}</span>
               {settings.openingBalanceDate && <> · נקבע ב-{formatDate(settings.openingBalanceDate)}</>}
+            </p>
+          </section>
+
+          <Separator />
+
+          {/* ===== Section 2b: Bank check ===== */}
+          <section>
+            <h3 className="text-lg font-semibold text-foreground mb-3">בדיקת בנק</h3>
+            <p className="text-sm text-muted-foreground mb-3">
+              כמה כסף <strong>באמת</strong> יש בחשבון היום — כולל מינוס. המספר
+              הזה לא נכנס לשום חישוב; הוא רק מושווה למה שהמערכת אומרת שאמור
+              להיות שם, כדי שתדעו אם חסר כסף.
+              <br />
+              <strong>שימו לב:</strong> הבדיקה משווה את הסכום הכולל בלבד. כסף
+              שנרשם לכיס הלא נכון לא יראה פער כאן — הוא יעוות את "כמה כסף פנוי
+              לעמותה".
+              <br />
+              להשאיר ריק כדי לכבות את הבדיקה.
+            </p>
+            <div className="flex items-end gap-3 flex-wrap">
+              <div className="flex-1 min-w-[180px]">
+                <Label htmlFor="actualBank">כמה באמת יש בבנק</Label>
+                <Input
+                  id="actualBank"
+                  type="number"
+                  value={newActualBank}
+                  onChange={(e) => setNewActualBank(e.target.value)}
+                  placeholder="לדוגמה 90518.65"
+                  className="mt-1"
+                />
+              </div>
+              <Button onClick={handleSaveActualBank} className="gap-1.5">
+                <Save className="h-4 w-4" />
+                שמור
+              </Button>
+            </div>
+            <p className="mt-2 text-xs text-muted-foreground">
+              {settings.actualBank === undefined || settings.actualBank === null ? (
+                "לא הוזן סכום — הבדיקה כבויה"
+              ) : (
+                <>
+                  ערך נוכחי: <span className="font-semibold text-foreground">{formatCurrency(settings.actualBank)}</span>
+                  {settings.actualBankDate && <> · נקרא ב-{formatDate(settings.actualBankDate)}</>}
+                </>
+              )}
             </p>
           </section>
 

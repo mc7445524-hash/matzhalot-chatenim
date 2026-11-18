@@ -144,6 +144,11 @@ export interface GlobalSettingsData {
    *  asks how much the amuta really holds would start out wrong. */
   openingBalance: number;
   openingBalanceDate?: string;
+  /** What the bank actually says today, typed in by hand. It is never used in
+   *  any calculation — it exists only so the books can be held up against
+   *  reality and a shortfall noticed instead of assumed away. */
+  actualBank?: number;
+  actualBankDate?: string;
   lastClassUpgrade: { date: string; type: string } | null;
   classUpgradeHistory: { date: string; type: string }[];
 }
@@ -496,6 +501,8 @@ export async function fetchGlobalSettings(): Promise<GlobalSettingsData> {
     minimumHistory: (map.get("minimumHistory") as any[]) ?? defaults.minimumHistory,
     openingBalance: (map.get("openingBalance") as number) ?? defaults.openingBalance,
     openingBalanceDate: (map.get("openingBalanceDate") as string) ?? undefined,
+    actualBank: (map.get("actualBank") as number) ?? undefined,
+    actualBankDate: (map.get("actualBankDate") as string) ?? undefined,
     lastClassUpgrade: (map.get("lastClassUpgrade") as any) ?? defaults.lastClassUpgrade,
     classUpgradeHistory: (map.get("classUpgradeHistory") as any[]) ?? defaults.classUpgradeHistory,
   };
@@ -510,6 +517,8 @@ export async function saveGlobalSettingsToDb(settings: GlobalSettingsData): Prom
     { key: "minimumHistory", value: settings.minimumHistory },
     { key: "openingBalance", value: settings.openingBalance },
     { key: "openingBalanceDate", value: settings.openingBalanceDate ?? null },
+    { key: "actualBank", value: settings.actualBank ?? null },
+    { key: "actualBankDate", value: settings.actualBankDate ?? null },
     { key: "lastClassUpgrade", value: settings.lastClassUpgrade },
     { key: "classUpgradeHistory", value: settings.classUpgradeHistory },
   ];

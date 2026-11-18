@@ -103,7 +103,8 @@ export default function Dashboard() {
     bachurim, incomes, askanimIncomes, expenses,
     products: basketProducts, minimum: min,
     openingBalance: globalSettings.openingBalance,
-  }), [bachurim, incomes, askanimIncomes, expenses, basketProducts, min, globalSettings.openingBalance]);
+    actualBank: globalSettings.actualBank,
+  }), [bachurim, incomes, askanimIncomes, expenses, basketProducts, min, globalSettings.openingBalance, globalSettings.actualBank]);
 
   // ── derived per-bachur stats ────────────────────────────────
   const stats = useMemo(() => {
@@ -243,7 +244,7 @@ export default function Dashboard() {
             <PocketRow label="פרויקט עסקנים" value={money.pockets.amutaAskanim} />
             <PocketRow label="תרומות והכנסות" value={money.pockets.amutaDonations} />
             <PocketRow label="עודפי בחורים מעל המינימום" value={money.pockets.amutaExcess} />
-            {money.pockets.amutaOpening > 0 && (
+            {money.pockets.amutaOpening !== 0 && (
               <PocketRow label="יתרת פתיחה" value={money.pockets.amutaOpening} />
             )}
             <PocketRow label="הוקצה לסלים" value={-money.pockets.amutaLentOut} />
@@ -272,6 +273,67 @@ export default function Dashboard() {
               </p>
             )}
           </div>
+        </div>
+
+        {/* ─── The books against the bank ─── */}
+        <div className="mt-6 rounded-xl border border-border bg-card p-5">
+          <h3 className="text-lg font-bold text-foreground mb-1">בדיקת בנק</h3>
+          {money.pockets.bankDiff === null ? (
+            <p className="text-sm text-muted-foreground">
+              כדי לדעת אם הכסף שאמור להיות בחשבון באמת שם — הזינו בהגדרות, תחת
+              "בדיקת בנק", כמה באמת יש בבנק היום.
+            </p>
+          ) : (
+            <>
+              <div className="max-w-md">
+                <PocketRow label="אמור להיות בבנק" value={money.pockets.bank} />
+                <PocketRow label="באמת יש בבנק" value={money.pockets.actualBank as number} />
+                <div className="mt-3 border-t border-border pt-2 flex justify-between items-center">
+                  <span className="text-sm font-semibold">ההפרש</span>
+                  <span className={`text-2xl font-bold ${
+                    money.pockets.bankDiff === 0
+                      ? "text-green-700 dark:text-green-500"
+                      : money.pockets.bankDiff < 0
+                        ? "text-red-600"
+                        : "text-amber-600"
+                  }`}>
+                    {fmt(money.pockets.bankDiff)}
+                  </span>
+                </div>
+              </div>
+
+              {money.pockets.bankDiff === 0 && (
+                <p className="mt-3 text-sm font-semibold text-green-700 dark:text-green-500">
+                  ✓ הספרים והבנק תואמים
+                </p>
+              )}
+
+              {money.pockets.bankDiff !== 0 && (
+                <div className={`mt-4 rounded-lg border p-4 text-sm ${
+                  money.pockets.bankDiff < 0
+                    ? "border-red-300 bg-red-50 dark:border-red-900 dark:bg-red-950/30"
+                    : "border-amber-300 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/30"
+                }`}>
+                  <p className="font-semibold text-foreground">
+                    {money.pockets.bankDiff < 0
+                      ? `בבנק יש ${fmt(-money.pockets.bankDiff)} פחות ממה שהספרים אומרים`
+                      : `בבנק יש ${fmt(money.pockets.bankDiff)} יותר ממה שהספרים אומרים`}
+                  </p>
+                  <p className="mt-2 text-muted-foreground">
+                    {money.pockets.bankDiff < 0
+                      ? "ברוב המקרים הסיבה היא הוצאה ששולמה ולא הוזנה כאן. בדקו קודם את זה, ואחר כך יתרת פתיחה שלא הוזנה."
+                      : "ברוב המקרים הסיבה היא הכנסה שהתקבלה ולא נרשמה, או יתרת פתיחה שחסרה."}
+                  </p>
+                  <p className="mt-3 font-semibold text-foreground">
+                    אל תסגרו את הפער בהזנת סכום כדי שיתאזן. הפער ייעלם — והכסף החסר ייעלם איתו.
+                  </p>
+                  <p className="mt-1 text-muted-foreground">
+                    הבדיקה משווה את הסכום הכולל בלבד, ולכן כסף שנרשם לכיס הלא נכון לא יופיע כאן כפער.
+                  </p>
+                </div>
+              )}
+            </>
+          )}
         </div>
       </div>
 
