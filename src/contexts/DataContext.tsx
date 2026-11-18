@@ -123,9 +123,54 @@ export function DataProvider({ children }: { children: ReactNode }) {
       "askanimIncomes", "basketProducts", "globalSettings",
       "fundraisers", "expense_cats_salim", "expense_cats_amuta",
     ]);
+
+    /** Take the new value straight from localStorage.
+     *
+     *  Going back to the cloud here was the reason a screen only caught up
+     *  after a refresh: the upload is debounced, so the fetch landed before
+     *  the write did and brought back the old rows — sometimes putting them
+     *  back on screen. localStorage already holds what was just written, and
+     *  the cloud copy follows a moment later on its own. */
+    const hydrate = (key: string) => {
+      let parsed: any;
+      try {
+        const raw = localStorage.getItem(key);
+        if (raw === null) return;
+        parsed = JSON.parse(raw);
+      } catch {
+        return;
+      }
+      const asList = <T,>(fallback: T[]): T[] => (Array.isArray(parsed) ? parsed : fallback);
+      switch (key) {
+        case "bachurim": _setBachurim(asList([])); break;
+        case "incomes": _setIncomes(asList([])); break;
+        case "expenses": _setExpenses(asList([])); break;
+        case "debts": _setDebts(asList([])); break;
+        case "askanimIncomes": _setAskanimIncomes(asList([])); break;
+        case "basketProducts": _setBasketProducts(asList([])); break;
+        case "fundraisers": _setFundraisers(asList([])); break;
+        case "expense_cats_salim": _setCatsSalim(asList([])); break;
+        case "expense_cats_amuta": _setCatsAmuta(asList([])); break;
+        case "globalSettings":
+          if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+            _setGlobalSettings({ ...defaultSettings, ...parsed });
+          }
+          break;
+        default: break;
+      }
+    };
+
     let timer: ReturnType<typeof setTimeout> | null = null;
     const onStorage = (e: StorageEvent) => {
       if (!e.key || !SYNCED.has(e.key)) return;
+      // A real cross-tab event carries the storage area it came from; the
+      // one our own patch dispatches does not. That tells a write made here
+      // from a write made elsewhere, and only the second needs the cloud.
+      const fromAnotherTab = !!e.storageArea;
+      if (!fromAnotherTab) {
+        hydrate(e.key);
+        return;
+      }
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => { loadAll(); }, 150);
     };
