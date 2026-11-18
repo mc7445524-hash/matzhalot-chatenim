@@ -7,11 +7,18 @@ import { supabase } from "@/integrations/supabase/client";
 
 export interface OnlineUser {
   email: string;
+  /** What the person calls themselves, when they have set it. The email is
+   *  kept as a fallback and as the thing that is actually unique. */
+  displayName?: string | null;
   userId: string;
   joinedAt: string;
 }
 
-export function useOnlineUsers(currentEmail: string | null, currentUserId: string | null) {
+export function useOnlineUsers(
+  currentEmail: string | null,
+  currentUserId: string | null,
+  currentDisplayName?: string | null,
+) {
   const [users, setUsers] = useState<OnlineUser[]>([]);
 
   useEffect(() => {
@@ -43,6 +50,7 @@ export function useOnlineUsers(currentEmail: string | null, currentUserId: strin
         if (status === "SUBSCRIBED") {
           await channel.track({
             email: currentEmail,
+            displayName: currentDisplayName ?? null,
             userId: currentUserId,
             joinedAt: new Date().toISOString(),
           });
@@ -52,7 +60,7 @@ export function useOnlineUsers(currentEmail: string | null, currentUserId: strin
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [currentEmail, currentUserId]);
+  }, [currentEmail, currentUserId, currentDisplayName]);
 
   return users;
 }

@@ -12,9 +12,20 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 
-function initialsFromEmail(email: string) {
-  const name = email.split("@")[0];
-  return name.slice(0, 2).toUpperCase();
+/** What to call someone on screen: their own name when they have set one,
+ *  and the email only as a fallback. */
+function labelFor(u: { displayName?: string | null; email: string }) {
+  const name = (u.displayName || "").trim();
+  return name || u.email;
+}
+
+function initialsFor(u: { displayName?: string | null; email: string }) {
+  const name = (u.displayName || "").trim();
+  if (name) {
+    const parts = name.split(/\s+/).filter(Boolean);
+    return (parts.length > 1 ? parts[0][0] + parts[1][0] : parts[0].slice(0, 2));
+  }
+  return u.email.split("@")[0].slice(0, 2).toUpperCase();
 }
 
 function colorFromEmail(email: string) {
@@ -25,8 +36,8 @@ function colorFromEmail(email: string) {
 }
 
 export default function OnlineUsers() {
-  const { user } = useAuth();
-  const onlineUsers = useOnlineUsers(user?.email ?? null, user?.id ?? null);
+  const { user, displayName } = useAuth();
+  const onlineUsers = useOnlineUsers(user?.email ?? null, user?.id ?? null, displayName);
 
   if (!user) return null;
 
@@ -50,10 +61,10 @@ export default function OnlineUsers() {
                       className="inline-flex items-center justify-center w-8 h-8 rounded-full text-xs font-bold text-white border-2 border-primary ring-1 ring-white"
                       style={{ backgroundColor: colorFromEmail(u.email) }}
                     >
-                      {initialsFromEmail(u.email)}
+                      {initialsFor(u)}
                     </span>
                   </TooltipTrigger>
-                  <TooltipContent>{u.email}</TooltipContent>
+                  <TooltipContent>{labelFor(u)}</TooltipContent>
                 </Tooltip>
               ))}
               {extra > 0 && (
@@ -80,9 +91,15 @@ export default function OnlineUsers() {
                     className="inline-flex items-center justify-center w-6 h-6 rounded-full text-[10px] font-bold text-white shrink-0"
                     style={{ backgroundColor: colorFromEmail(u.email) }}
                   >
-                    {initialsFromEmail(u.email)}
+                    {initialsFor(u)}
                   </span>
-                  <span className="truncate" dir="ltr">{u.email}</span>
+                  <span
+                    className="truncate"
+                    dir={u.displayName ? "rtl" : "ltr"}
+                    title={u.email}
+                  >
+                    {labelFor(u)}
+                  </span>
                   {u.userId === user.id && (
                     <span className="text-[10px] text-muted-foreground">(אתה)</span>
                   )}
