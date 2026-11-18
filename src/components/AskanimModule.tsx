@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { Plus, Upload, Trash2, UserMinus, Search, X, Pencil, ListOrdered } from "lucide-react";
+import { Plus, Upload, Trash2, UserMinus, Search, X, Pencil, ListOrdered, ArrowUp, ArrowDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -31,6 +31,38 @@ interface AskanimIncome {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────
+/** A column header that sorts the table. The arrow shows which way the
+ *  current column runs, so "from the start" and "from the end" are one
+ *  click apart and never a guess. */
+function SortHead({
+  label, col, sortBy, sortDir, onClick,
+}: {
+  label: string;
+  col: "date" | "name" | "amount";
+  sortBy: string;
+  sortDir: "asc" | "desc";
+  onClick: (col: "date" | "name" | "amount") => void;
+}) {
+  const active = sortBy === col;
+  return (
+    <TableHead className="text-primary-foreground text-right">
+      <button
+        type="button"
+        onClick={() => onClick(col)}
+        className="inline-flex items-center gap-1 hover:underline"
+        title="לחצו למיון"
+      >
+        {label}
+        {active ? (
+          sortDir === "asc" ? <ArrowUp className="h-3.5 w-3.5" /> : <ArrowDown className="h-3.5 w-3.5" />
+        ) : (
+          <ArrowDown className="h-3.5 w-3.5 opacity-30" />
+        )}
+      </button>
+    </TableHead>
+  );
+}
+
 function loadBachurim(): Bachur[] {
   try {
     return JSON.parse(localStorage.getItem("bachurim") || "[]");
@@ -126,6 +158,17 @@ export default function AskanimModule() {
   const [editTarget, setEditTarget] = useState<AskanimIncome | null>(null);
   const [panelBachur, setPanelBachur] = useState<Bachur | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<AskanimIncome | null>(null);
+  const [sortBy, setSortBy] = useState<"date" | "name" | "amount">("date");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const toggleSort = (col: "date" | "name" | "amount") => {
+    if (sortBy === col) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortBy(col);
+      setSortDir(col === "name" ? "asc" : "desc");
+    }
+  };
+
   const [skippedReport, setSkippedReport] = useState<
     { name: string; amount: number; reason: string }[] | null
   >(null);
@@ -151,9 +194,17 @@ export default function AskanimModule() {
   const filteredBachurim = q
     ? askanimBachurim.filter((b) => b.name.toLowerCase().includes(q) || b.sku.toLowerCase().includes(q))
     : askanimBachurim;
-  const filteredIncomes = q
+  const matchingIncomes = q
     ? incomes.filter((i) => i.bachurName.toLowerCase().includes(q) || (i.notes || "").toLowerCase().includes(q))
     : incomes;
+  // Sorted on a copy: `incomes` is state, and sorting it in place would
+  // reorder the stored list behind the screen's back.
+  const filteredIncomes = [...matchingIncomes].sort((a, b) => {
+    const dir = sortDir === "asc" ? 1 : -1;
+    if (sortBy === "amount") return (a.amount - b.amount) * dir;
+    if (sortBy === "name") return a.bachurName.localeCompare(b.bachurName, "he") * dir;
+    return (a.date || "").localeCompare(b.date || "") * dir;
+  });
 
   const totalRaised = incomes.reduce((s, i) => s + i.amount, 0);
 
@@ -527,9 +578,9 @@ export default function AskanimModule() {
             <Table>
               <TableHeader>
                 <TableRow className="bg-[hsl(var(--primary))] hover:bg-[hsl(var(--primary))]">
-                  <TableHead className="text-primary-foreground text-right">תאריך</TableHead>
-                  <TableHead className="text-primary-foreground text-right">שם הבחור</TableHead>
-                  <TableHead className="text-primary-foreground text-right">סכום</TableHead>
+                  <SortHead label="תאריך" col="date" sortBy={sortBy} sortDir={sortDir} onClick={toggleSort} />
+                  <SortHead label="שם הבחור" col="name" sortBy={sortBy} sortDir={sortDir} onClick={toggleSort} />
+                  <SortHead label="סכום" col="amount" sortBy={sortBy} sortDir={sortDir} onClick={toggleSort} />
                   <TableHead className="text-primary-foreground text-right">הערות</TableHead>
                   <TableHead className="text-primary-foreground text-center">פעולות</TableHead>
                 </TableRow>
