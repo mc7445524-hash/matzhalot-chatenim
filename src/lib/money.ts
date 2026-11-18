@@ -40,6 +40,10 @@ export interface MoneyInput {
   /** What the bank statement says today. Nothing is computed from it; it is
    *  compared against `bank` so that a shortfall shows up on its own. */
   actualBank?: number;
+  /** The books-minus-bank difference measured on the day the statement was
+   *  read. The bank figure is derived from it, so it follows every entry
+   *  without being typed again. */
+  bankGap?: number;
 }
 
 // ─── Per bachur ───────────────────────────────────────────────
@@ -278,12 +282,17 @@ export function computeMoney(input: MoneyInput): MoneyState {
   // Comparing only the total means a shekel filed under the wrong pocket
   // still leaves the difference at zero. This catches money that is missing
   // altogether, not money that is merely misfiled.
-  const actualBankRaw = input.actualBank;
-  const actualBank =
-    actualBankRaw === undefined || actualBankRaw === null || !Number.isFinite(Number(actualBankRaw))
+  // Measured once, then derived. Money entered afterwards raises the books
+  // and the bank together, so a bachur's deposit leaves the hole where it
+  // was while a donation closes it — without any rule that tells the two
+  // kinds of money apart.
+  const gapRaw = input.bankGap;
+  const bankGap =
+    gapRaw === undefined || gapRaw === null || !Number.isFinite(Number(gapRaw))
       ? null
-      : Number(actualBankRaw);
-  const bankDiff = actualBank === null ? null : actualBank - bank;
+      : Number(gapRaw);
+  const actualBank = bankGap === null ? null : bank - bankGap;
+  const bankDiff = bankGap === null ? null : -bankGap;
 
   // Money that is simply not there. A shortfall eats the amuta's own free
   // money first — that is a loss and nothing has to be repaid — and only

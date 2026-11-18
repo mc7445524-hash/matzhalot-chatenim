@@ -103,8 +103,8 @@ export default function Dashboard() {
     bachurim, incomes, askanimIncomes, expenses,
     products: basketProducts, minimum: min,
     openingBalance: globalSettings.openingBalance,
-    actualBank: globalSettings.actualBank,
-  }), [bachurim, incomes, askanimIncomes, expenses, basketProducts, min, globalSettings.openingBalance, globalSettings.actualBank]);
+    bankGap: globalSettings.bankGap,
+  }), [bachurim, incomes, askanimIncomes, expenses, basketProducts, min, globalSettings.openingBalance, globalSettings.bankGap]);
 
   // ── derived per-bachur stats ────────────────────────────────
   const stats = useMemo(() => {
@@ -296,6 +296,7 @@ export default function Dashboard() {
               <h3 className="text-lg font-bold text-foreground mb-1">החור שצריך להחזיר</h3>
               <p className="text-sm text-muted-foreground mb-3">
                 כסף של בחורים חייב להיות בחשבון. אם הוא חסר — צריך להחזיר אותו.
+                יתרת הבנק מתעדכנת לבד מכל הכנסה והוצאה.
               </p>
               <PocketRow label="כסף שמובטח לבחורים" value={money.pockets.salimTotal + money.pockets.openShopDebts} />
               <PocketRow label="יש בבנק" value={money.pockets.actualBank as number} />
@@ -321,6 +322,11 @@ export default function Dashboard() {
               <h3 className="text-lg font-bold text-foreground mb-1">הפער בספרים</h3>
               <p className="text-sm text-muted-foreground mb-3">
                 כמה כסף לא מוסבר — בלי קשר לשאלה של מי הוא היה.
+                {globalSettings.actualBankDate && (
+                  <> נמדד ב-{new Date(globalSettings.actualBankDate).toLocaleDateString("he-IL")}.</>
+                )}{" "}
+                המספר ננעל ביום המדידה. אם היתרה במערכת כבר לא תואמת לבנק —
+                הזינו אותה שוב בהגדרות, וזה מה שיתפוס טעות חדשה.
               </p>
               <PocketRow label="אמור להיות בבנק" value={money.pockets.bank} />
               <PocketRow label="באמת יש בבנק" value={money.pockets.actualBank as number} />
@@ -371,11 +377,13 @@ export default function Dashboard() {
                       : "ברוב המקרים הסיבה היא הכנסה שהתקבלה ולא נרשמה, או יתרת פתיחה שחסרה."}
                   </p>
                   <p className="mt-3 text-muted-foreground">
-                    תרומה אמיתית שתיכנס לבנק תקטין את החור — <strong className="text-foreground">ולא תזיז את המספר הזה</strong>,
-                    כי הבנק והספרים עולים יחד.
+                    תרומה שתיכנס תקטין את החור — <strong className="text-foreground">ולא תזיז את המספר הזה</strong>,
+                    כי הבנק והספרים עולים יחד. הפקדה של בחור לא תקטין אף אחד
+                    מהשניים: היא מעלה גם את מה שמובטח לו.
                   </p>
                   <p className="mt-2 font-semibold text-foreground">
-                    המספר הזה זז רק אם נרשם כסף שלא התקבל באמת. אל תסגרו אותו בהזנת סכום.
+                    אל תסגרו את המספר הזה בהזנת סכום. הוא זוכר כמה כסף נעלם, גם
+                    אחרי שהחור יכוסה.
                   </p>
                 </div>
               )}

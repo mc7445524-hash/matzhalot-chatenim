@@ -27,6 +27,7 @@ import {
   type Bachur, type Income, type Expense, type Debt, type AskanimIncome,
 } from "@/lib/db";
 import { supabase } from "@/integrations/supabase/client";
+import { computeMoney } from "@/lib/money";
 
 // ─── Data backup / restore ───────────────────────────────────
 const BACKUP_KEY = "__lastDataBackup__";
@@ -77,6 +78,7 @@ interface GlobalSettingsData {
   openingBalanceDate?: string;
   actualBank?: number;
   actualBankDate?: string;
+  bankGap?: number;
   lastClassUpgrade: ClassUpgradeLog | null;
   classUpgradeHistory: ClassUpgradeLog[];
 }
@@ -225,7 +227,7 @@ export default function GlobalSettings({ triggerRef, onNavigateToTab }: { trigge
   const handleSaveActualBank = () => {
     const raw = newActualBank.trim();
     if (raw === "") {
-      const cleared: GlobalSettingsData = { ...settings, actualBank: undefined, actualBankDate: undefined };
+      const cleared: GlobalSettingsData = { ...settings, actualBank: undefined, actualBankDate: undefined, bankGap: undefined };
       saveSettings(cleared);
       setSettings(cleared);
       toast.success("הסכום נמחק — הבדיקה כבויה");
@@ -236,9 +238,30 @@ export default function GlobalSettings({ triggerRef, onNavigateToTab }: { trigge
       toast.error("יש להזין סכום תקין");
       return;
     }
+    // What the books say right now, read the same way every other screen
+    // reads it. The difference against the statement is what gets stored:
+    // from here on the bank figure follows every entry by itself.
+    const read = <T,>(key: string, fallback: T): T => {
+      try {
+        const raw = localStorage.getItem(key);
+        return raw ? (JSON.parse(raw) as T) : fallback;
+      } catch {
+        return fallback;
+      }
+    };
+    const books = computeMoney({
+      bachurim: read("bachurim", [] as any[]),
+      incomes: read("incomes", [] as any[]),
+      askanimIncomes: read("askanimIncomes", [] as any[]),
+      expenses: read("expenses", [] as any[]),
+      products: read("basketProducts", [] as any[]),
+      minimum: settings.minimumForBasket,
+      openingBalance: settings.openingBalance,
+    }).pockets.bank;
     const updated: GlobalSettingsData = {
       ...settings,
       actualBank: amount,
+      bankGap: books - amount,
       actualBankDate: new Date().toISOString(),
     };
     saveSettings(updated);
@@ -496,9 +519,12 @@ export default function GlobalSettings({ triggerRef, onNavigateToTab }: { trigge
           <section>
             <h3 className="text-lg font-semibold text-foreground mb-3">בדיקת בנק</h3>
             <p className="text-sm text-muted-foreground mb-3">
-              כמה כסף <strong>באמת</strong> יש בחשבון היום — כולל מינוס. המספר
-              הזה לא נכנס לשום חישוב; הוא רק מושווה למה שהמערכת אומרת שאמור
-              להיות שם, כדי שתדעו אם חסר כסף.
+              כמה כסף <strong>באמת</strong> יש בחשבון היום — כולל מינוס.
+              מזינים פעם אחת; מכאן והלאה היתרה מתעדכנת לבד מכל הכנסה והוצאה
+              שתירשם, ואין צורך להקליד אותה שוב.
+              <br />
+              <strong>מתי כן להזין שוב:</strong> כשתראו שהיתרה במערכת כבר לא
+              תואמת לבנק. ההזנה החוזרת היא מה שתופס טעות חדשה.
               <br />
               <strong>שימו לב:</strong> הבדיקה משווה את הסכום הכולל בלבד. כסף
               שנרשם לכיס הלא נכון לא יראה פער כאן — הוא יעוות את "כמה כסף פנוי

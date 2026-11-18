@@ -149,6 +149,10 @@ export interface GlobalSettingsData {
    *  reality and a shortfall noticed instead of assumed away. */
   actualBank?: number;
   actualBankDate?: string;
+  /** What the books said minus what the bank said, at the moment it was
+   *  read. The live bank figure is derived from this, so every entry moves
+   *  it on its own and the reading never has to be typed again. */
+  bankGap?: number;
   lastClassUpgrade: { date: string; type: string } | null;
   classUpgradeHistory: { date: string; type: string }[];
 }
@@ -503,6 +507,7 @@ export async function fetchGlobalSettings(): Promise<GlobalSettingsData> {
     openingBalanceDate: (map.get("openingBalanceDate") as string) ?? undefined,
     actualBank: (map.get("actualBank") as number) ?? undefined,
     actualBankDate: (map.get("actualBankDate") as string) ?? undefined,
+    bankGap: (map.get("bankGap") as number) ?? undefined,
     lastClassUpgrade: (map.get("lastClassUpgrade") as any) ?? defaults.lastClassUpgrade,
     classUpgradeHistory: (map.get("classUpgradeHistory") as any[]) ?? defaults.classUpgradeHistory,
   };
@@ -519,6 +524,7 @@ export async function saveGlobalSettingsToDb(settings: GlobalSettingsData): Prom
     { key: "openingBalanceDate", value: settings.openingBalanceDate ?? null },
     { key: "actualBank", value: settings.actualBank ?? null },
     { key: "actualBankDate", value: settings.actualBankDate ?? null },
+    { key: "bankGap", value: settings.bankGap ?? null },
     { key: "lastClassUpgrade", value: settings.lastClassUpgrade },
     { key: "classUpgradeHistory", value: settings.classUpgradeHistory },
   ];
