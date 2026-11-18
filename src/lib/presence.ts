@@ -17,7 +17,10 @@ export function useOnlineUsers(currentEmail: string | null, currentUserId: strin
   useEffect(() => {
     if (!currentEmail || !currentUserId) return;
 
-    const channel = supabase.channel(`online-users-${currentUserId}-${Math.random().toString(36).slice(2)}`, {
+    // One room for everybody. Presence is only shared between clients on the
+    // same channel name, so a name carrying the user's own id put each person
+    // alone in a room of their own and everyone saw a list of one.
+    const channel = supabase.channel("online-users", {
       config: { presence: { key: currentUserId } },
     });
 
