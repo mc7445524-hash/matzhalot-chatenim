@@ -275,31 +275,68 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* ─── The books against the bank ─── */}
-        <div className="mt-6 rounded-xl border border-border bg-card p-5">
-          <h3 className="text-lg font-bold text-foreground mb-1">בדיקת בנק</h3>
-          {money.pockets.bankDiff === null ? (
+        {/* ─── The hole, and the gap that cannot be quietly closed ─── */}
+        {money.pockets.bankDiff === null ? (
+          <div className="mt-6 rounded-xl border border-border bg-card p-5">
+            <h3 className="text-lg font-bold text-foreground mb-1">בדיקת בנק</h3>
             <p className="text-sm text-muted-foreground">
               כדי לדעת אם הכסף שאמור להיות בחשבון באמת שם — הזינו בהגדרות, תחת
               "בדיקת בנק", כמה באמת יש בבנק היום.
             </p>
-          ) : (
-            <>
-              <div className="max-w-md">
-                <PocketRow label="אמור להיות בבנק" value={money.pockets.bank} />
-                <PocketRow label="באמת יש בבנק" value={money.pockets.actualBank as number} />
-                <div className="mt-3 border-t border-border pt-2 flex justify-between items-center">
-                  <span className="text-sm font-semibold">ההפרש</span>
-                  <span className={`text-2xl font-bold ${
-                    money.pockets.bankDiff === 0
-                      ? "text-green-700 dark:text-green-500"
-                      : money.pockets.bankDiff < 0
-                        ? "text-red-600"
-                        : "text-amber-600"
-                  }`}>
-                    {fmt(money.pockets.bankDiff)}
-                  </span>
-                </div>
+          </div>
+        ) : (
+          <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-4">
+
+            {/* The question he actually asks: how much must be put back */}
+            <div className={`rounded-xl border p-5 ${
+              (money.pockets.holeInSalim as number) > 0
+                ? "border-red-300 bg-red-50 dark:border-red-900 dark:bg-red-950/30"
+                : "border-green-300 bg-green-50 dark:border-green-900 dark:bg-green-950/30"
+            }`}>
+              <h3 className="text-lg font-bold text-foreground mb-1">החור שצריך להחזיר</h3>
+              <p className="text-sm text-muted-foreground mb-3">
+                כסף של בחורים חייב להיות בחשבון. אם הוא חסר — צריך להחזיר אותו.
+              </p>
+              <PocketRow label="כסף שמובטח לבחורים" value={money.pockets.salimTotal + money.pockets.openShopDebts} />
+              <PocketRow label="יש בבנק" value={money.pockets.actualBank as number} />
+              <div className="mt-3 border-t border-border pt-2 flex justify-between items-center">
+                <span className="text-sm font-semibold">חסר להחזיר</span>
+                <span className={`text-3xl font-bold ${
+                  (money.pockets.holeInSalim as number) > 0
+                    ? "text-red-600"
+                    : "text-green-700 dark:text-green-500"
+                }`}>
+                  {fmt(money.pockets.holeInSalim as number)}
+                </span>
+              </div>
+              {(money.pockets.holeInSalim as number) === 0 && (
+                <p className="mt-3 text-sm font-semibold text-green-700 dark:text-green-500">
+                  ✓ כל הכסף של הבחורים נמצא בבנק
+                </p>
+              )}
+            </div>
+
+            {/* The figure a mistake cannot quietly erase */}
+            <div className="rounded-xl border border-border bg-card p-5">
+              <h3 className="text-lg font-bold text-foreground mb-1">הפער בספרים</h3>
+              <p className="text-sm text-muted-foreground mb-3">
+                כמה כסף לא מוסבר — בלי קשר לשאלה של מי הוא היה.
+              </p>
+              <PocketRow label="אמור להיות בבנק" value={money.pockets.bank} />
+              <PocketRow label="באמת יש בבנק" value={money.pockets.actualBank as number} />
+              <div className="mt-3 border-t border-border pt-2 flex justify-between items-center">
+                <span className="text-sm font-semibold">
+                  {(money.pockets.bankDiff as number) > 0 ? "יש יותר מהרשום" : "לא מוסבר"}
+                </span>
+                <span className={`text-2xl font-bold ${
+                  money.pockets.bankDiff === 0
+                    ? "text-green-700 dark:text-green-500"
+                    : (money.pockets.bankDiff as number) < 0
+                      ? "text-red-600"
+                      : "text-amber-600"
+                }`}>
+                  {fmt(Math.abs(money.pockets.bankDiff as number))}
+                </span>
               </div>
 
               {money.pockets.bankDiff === 0 && (
@@ -308,33 +345,43 @@ export default function Dashboard() {
                 </p>
               )}
 
+              {(money.pockets.bankDiff as number) < 0 && (
+                <div className="mt-4 rounded-lg border border-border bg-secondary/40 p-3">
+                  <p className="text-sm font-semibold text-foreground mb-1">מתוך זה:</p>
+                  <PocketRow
+                    label="היה כסף פנוי של העמותה — אין מה להחזיר"
+                    value={money.pockets.missingFromAmuta as number}
+                  />
+                  <PocketRow
+                    label="היה כסף של הבחורים — זה החור"
+                    value={money.pockets.holeInSalim as number}
+                  />
+                </div>
+              )}
+
               {money.pockets.bankDiff !== 0 && (
                 <div className={`mt-4 rounded-lg border p-4 text-sm ${
-                  money.pockets.bankDiff < 0
+                  (money.pockets.bankDiff as number) < 0
                     ? "border-red-300 bg-red-50 dark:border-red-900 dark:bg-red-950/30"
                     : "border-amber-300 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/30"
                 }`}>
-                  <p className="font-semibold text-foreground">
-                    {money.pockets.bankDiff < 0
-                      ? `בבנק יש ${fmt(-money.pockets.bankDiff)} פחות ממה שהספרים אומרים`
-                      : `בבנק יש ${fmt(money.pockets.bankDiff)} יותר ממה שהספרים אומרים`}
-                  </p>
-                  <p className="mt-2 text-muted-foreground">
-                    {money.pockets.bankDiff < 0
+                  <p className="text-muted-foreground">
+                    {(money.pockets.bankDiff as number) < 0
                       ? "ברוב המקרים הסיבה היא הוצאה ששולמה ולא הוזנה כאן. בדקו קודם את זה, ואחר כך יתרת פתיחה שלא הוזנה."
                       : "ברוב המקרים הסיבה היא הכנסה שהתקבלה ולא נרשמה, או יתרת פתיחה שחסרה."}
                   </p>
-                  <p className="mt-3 font-semibold text-foreground">
-                    אל תסגרו את הפער בהזנת סכום כדי שיתאזן. הפער ייעלם — והכסף החסר ייעלם איתו.
+                  <p className="mt-3 text-muted-foreground">
+                    תרומה אמיתית שתיכנס לבנק תקטין את החור — <strong className="text-foreground">ולא תזיז את המספר הזה</strong>,
+                    כי הבנק והספרים עולים יחד.
                   </p>
-                  <p className="mt-1 text-muted-foreground">
-                    הבדיקה משווה את הסכום הכולל בלבד, ולכן כסף שנרשם לכיס הלא נכון לא יופיע כאן כפער.
+                  <p className="mt-2 font-semibold text-foreground">
+                    המספר הזה זז רק אם נרשם כסף שלא התקבל באמת. אל תסגרו אותו בהזנת סכום.
                   </p>
                 </div>
               )}
-            </>
-          )}
-        </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ─── What is still to come ─── */}
