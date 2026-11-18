@@ -1,5 +1,5 @@
 import { useState, useEffect, type RefObject } from "react";
-import { Settings, Save, ArrowUpCircle, Trash2, RotateCcw, Database } from "lucide-react";
+import { Settings, Save, Trash2, RotateCcw, Database } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -28,6 +28,7 @@ import {
 } from "@/lib/db";
 import { supabase } from "@/integrations/supabase/client";
 import { computeMoney } from "@/lib/money";
+import NewYearIntake from "@/components/NewYearIntake";
 
 // ─── Data backup / restore ───────────────────────────────────
 const BACKUP_KEY = "__lastDataBackup__";
@@ -269,39 +270,17 @@ export default function GlobalSettings({ triggerRef, onNavigateToTab }: { trigge
     toast.success(`נשמר: ${formatCurrency(amount)}`);
   };
 
-  const handleUpgradeClasses = () => {
-    try {
-      const bachurim = JSON.parse(localStorage.getItem("bachurim") || "[]");
-      let upgraded = 0;
-
-      const updatedBachurim = bachurim.map((b: any) => {
-        // Skip married bachurim
-        if (b.married) return b;
-        const currentIdx = CLASS_LEVELS.indexOf(b.classLevel);
-        if (currentIdx === -1 || currentIdx >= CLASS_LEVELS.length - 1) return b;
-        upgraded++;
-        return { ...b, classLevel: CLASS_LEVELS[currentIdx + 1] };
-      });
-
-      localStorage.setItem("bachurim", JSON.stringify(updatedBachurim));
-
-      const logEntry: ClassUpgradeLog = {
-        date: new Date().toISOString(),
-        type: "manual",
-      };
-
-      const updated: GlobalSettingsData = {
-        ...settings,
-        lastClassUpgrade: logEntry,
-        classUpgradeHistory: [logEntry, ...settings.classUpgradeHistory],
-      };
-      saveSettings(updated);
-      setSettings(updated);
-
-      toast.success(`השיעורים עודכנו! ${upgraded} בחורים הועלו שיעור`);
-    } catch {
-      toast.error("שגיאה בעדכון השיעורים");
-    }
+  /** Called once the intake has written the new list. The log is what the
+   *  same-year guard reads, so it is recorded here and nowhere else. */
+  const recordUpgrade = () => {
+    const logEntry: ClassUpgradeLog = { date: new Date().toISOString(), type: "manual" };
+    const updated: GlobalSettingsData = {
+      ...settings,
+      lastClassUpgrade: logEntry,
+      classUpgradeHistory: [logEntry, ...settings.classUpgradeHistory],
+    };
+    saveSettings(updated);
+    setSettings(updated);
   };
 
   const nextElul = getNextElulApprox();
@@ -584,10 +563,20 @@ export default function GlobalSettings({ triggerRef, onNavigateToTab }: { trigge
               )}
             </div>
 
-            <Button onClick={handleUpgradeClasses} variant="outline" className="gap-1.5 w-full">
-              <ArrowUpCircle className="h-4 w-4" />
-              העלה שיעור לכולם
-            </Button>
+            <div className="rounded-lg border border-border p-4">
+              <h4 className="text-sm font-semibold text-foreground mb-1">
+                מעבר לשנה חדשה
+              </h4>
+              <p className="text-sm text-muted-foreground mb-3">
+                קובץ אחד עושה את שתי הפעולות יחד: הבחורים שבקובץ נכנסים
+                לשיעור א׳, וכל מי שכבר במערכת עולה שיעור. יוצג בדיוק מה
+                ישתנה לפני שמשהו נשמר.
+              </p>
+              <NewYearIntake
+                lastUpgrade={settings.lastClassUpgrade}
+                onApplied={recordUpgrade}
+              />
+            </div>
 
             {settings.classUpgradeHistory.length > 0 && (
               <div className="mt-4">

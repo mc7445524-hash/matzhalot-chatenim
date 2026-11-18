@@ -31,7 +31,6 @@ import BachurTasks from "@/components/BachurTasks";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import { useFocusRow } from "@/hooks/useFocusRow";
-import MasterExcelImport from "@/components/MasterExcelImport";
 import OutingsExcel from "@/components/OutingsExcel";
 import { CLOSE_TO_BASKET_RATIO } from "@/lib/db";
 
@@ -703,7 +702,6 @@ export default function BachurimModule() {
         <Button onClick={() => setAddDialogOpen(true)} className="gap-1.5">
           <UserPlus className="h-4 w-4" /> הוסף בחור ידנית
         </Button>
-        <MasterExcelImport />
         <Button variant="outline" className="gap-1.5" onClick={() => setExportDialogOpen(true)}>
           <Download className="h-4 w-4" /> ייצוא Excel
         </Button>
