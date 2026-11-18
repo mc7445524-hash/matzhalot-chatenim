@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useRef, useEffect, useState } from "react";
 import AppHeader, { type TabId } from "@/components/AppHeader";
+import { useIdleLogout } from "@/lib/useIdleLogout";
 import { NavigationProvider, useNavigation } from "@/contexts/NavigationContext";
 import Dashboard from "@/components/Dashboard";
 import BachurimModule from "@/components/BachurimModule";
@@ -108,6 +109,8 @@ function AuthenticatedApp() {
 
 function AuthenticatedAppInner() {
   const { activeTab, setActiveTab } = useNavigation();
+  const { signOut, session } = useAuth();
+  useIdleLogout(signOut, !!session);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const settingsBtnRef = useRef<HTMLButtonElement | null>(null);
