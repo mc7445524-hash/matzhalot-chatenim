@@ -10,6 +10,9 @@ import type { Bachur, Outing } from "@/components/BachurimModule";
 import {
   todayIso, toStr, parseAmount, parseDate, normalizeName, normalizeHeader, fmtDateHe,
 } from "@/lib/excel";
+import {
+  downloadProtectedSheet, colLetter, type Cell, type CellKind,
+} from "@/lib/protectedXlsx";
 
 /** Excel round-trip for a single outing.
  *
@@ -30,6 +33,8 @@ import {
 type Mode = "basket" | "askanim";
 
 const PAYMENT_COLUMNS = ["מזומן", "אשראי", "אחר"] as const;
+
+const CLASS_ORDER = ["א", "ב", "ג", "ד", "ה", "ו"];
 
 const HDR_SKU = 'מק"ט';
 const HDR_NAME = "שם";
@@ -112,9 +117,23 @@ export default function OutingsExcel({ mode, bachurim, onDone }: Props) {
   /** Who appears in the downloaded form. Matching on upload still runs
    *  against the whole list, so a bachur whose status changed meanwhile
    *  is not rejected. */
-  const formRows = isAskanim
+  const formRows = (isAskanim
     ? bachurim.filter((b) => b.inAskanim && !b.married)
-    : bachurim.filter((b) => !b.closed && !b.married);
+    : bachurim.filter((b) => !b.closed && !b.married)
+  )
+    // Explicit, so the order of the form never drifts with the order
+    // names happen to sit in storage: shiur א first, and inside each
+    // shiur by name. Anyone holding the printed form can then find a
+    // bachur without searching the whole page.
+    .slice()
+    .sort((a, b) => {
+      const ia = CLASS_ORDER.indexOf(a.classLevel);
+      const ib = CLASS_ORDER.indexOf(b.classLevel);
+      const ra = ia === -1 ? CLASS_ORDER.length : ia;
+      const rb = ib === -1 ? CLASS_ORDER.length : ib;
+      if (ra !== rb) return ra - rb;
+      return (a.name || "").localeCompare(b.name || "", "he");
+    });
 
   // ─── Download the form ──────────────────────────────────────
   const handleDownload = async () => {
@@ -122,7 +141,6 @@ export default function OutingsExcel({ mode, bachurim, onDone }: Props) {
       toast.error(`אין ${label} להוריד`);
       return;
     }
-    const XLSX = await import("xlsx");
 
     const askanimByBachur = new Map<string, number>();
     if (isAskanim) {
@@ -139,29 +157,66 @@ export default function OutingsExcel({ mode, bachurim, onDone }: Props) {
       ? [HDR_SKU, HDR_NAME, HDR_CLASS, HDR_SOFAR, HDR_AMOUNT, HDR_NOTES]
       : [HDR_SKU, HDR_NAME, HDR_CLASS, HDR_SOFAR, ...PAYMENT_COLUMNS, HDR_DETAIL, HDR_NOTES];
 
-    const aoa: unknown[][] = [
-      [LBL_OUTING_NAME, ""],
-      [LBL_DATE, fmtDateHe(todayIso())],
-      [],
-      headers,
-      ...formRows.map((b) => {
-        const head = [b.sku, b.name, b.classLevel, soFar(b)];
-        return isAskanim
-          ? [...head, "", ""]
-          : [...head, "", "", "", "", ""];
-      }),
+    // Which columns the office may type into. Everything else is locked
+    // and red, so a wrong cell is refused by Excel rather than discovered
+    // later as a number that does not add up.
+    const width = headers.length;
+    const firstFillCol = 4; // the columns before it are identity, not input
+    const fillCols = Array.from({ length: width - firstFillCol }, (_, i) => firstFillCol + i);
+    const moneyCols = isAskanim ? [4] : [4, 5, 6];
+    const lastCol = colLetter(width - 1);
+
+    const banner =
+      "⚠️ אל תשנו שום דבר בקובץ הזה.\n" +
+      "למלא אך ורק בתאים הצהובים. התאים האדומים נעולים.\n" +
+      "אסור להוסיף או למחוק שורות, אסור להזיז שמות, אסור לשנות את הכותרות.";
+
+    const rowOf = (vals: (string | number | null)[], k: CellKind): Cell[] =>
+      vals.map((v) => ({ v, k }));
+
+    const blank = (): Cell[] => Array.from({ length: width }, () => ({ v: null, k: "locked" as CellKind }));
+
+    const bannerRow: Cell[] = [
+      { v: banner, k: "banner" },
+      ...Array.from({ length: width - 1 }, () => ({ v: null, k: "banner" as CellKind })),
     ];
 
-    const ws = XLSX.utils.aoa_to_sheet(aoa);
-    ws["!views"] = [{ RTL: true }];
-    ws["!cols"] = headers.map((h) =>
-      ({ wch: h === HDR_NAME ? 22 : h === HDR_DETAIL || h === HDR_NOTES ? 20 : h === HDR_SOFAR ? 14 : 11 })
-    );
+    const labelRow = (label: string, value: string): Cell[] => [
+      { v: label, k: "label" },
+      { v: value, k: "fill" },
+      ...Array.from({ length: width - 2 }, () => ({ v: null, k: "label" as CellKind })),
+    ];
 
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "יציאה");
-    XLSX.writeFile(wb, `יציאה-${label}-${todayIso()}.xlsx`);
-    toast.success("הטופס הורד. מלא את הסכומים והעלה בחזרה");
+    const sheetRows: Cell[][] = [
+      bannerRow,
+      bannerRow.map((c) => ({ ...c, v: null })),
+      labelRow(LBL_OUTING_NAME, ""),
+      labelRow(LBL_DATE, fmtDateHe(todayIso())),
+      blank(),
+      rowOf(headers, "header"),
+      ...formRows.map((b): Cell[] => [
+        { v: b.sku, k: "locked" },
+        { v: b.name, k: "locked" },
+        { v: b.classLevel, k: "locked" },
+        { v: soFar(b), k: "lockedNum" },
+        ...fillCols.map(() => ({ v: null, k: "fill" as CellKind })),
+      ]),
+    ];
+
+    const HEADER_ROW = 6;
+    await downloadProtectedSheet(`יציאה-${label}-${todayIso()}.xlsx`, {
+      sheetName: "יציאה",
+      rows: sheetRows,
+      colWidths: headers.map((h) =>
+        h === HDR_NAME ? 24 : h === HDR_DETAIL || h === HDR_NOTES ? 20 : h === HDR_SOFAR ? 14 : 12
+      ),
+      merges: [`A1:${lastCol}2`],
+      rowHeights: { 1: 30, 2: 30, 6: 28 },
+      freezeBelowRow: HEADER_ROW,
+      numericCols: moneyCols,
+      numericRange: [HEADER_ROW + 1, HEADER_ROW + formRows.length],
+    });
+    toast.success("הטופס הורד. מלאו רק בתאים הצהובים והעלו בחזרה");
   };
 
   // ─── Read an uploaded form ──────────────────────────────────
