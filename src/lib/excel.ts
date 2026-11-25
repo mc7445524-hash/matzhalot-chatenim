@@ -57,6 +57,30 @@ export function normalizeHeader(h: unknown): string {
   return toStr(h).replace(/["׳״'`.]/g, "").replace(/\s+/g, " ").trim();
 }
 
+/** Splits a stored name into [family, given], for sorting a list the way
+ *  a person reading it expects: הייגר before כהן, whatever the first name.
+ *
+ *  Names are kept as one string, so the family name is taken as the last
+ *  word — except after a patronymic, where the father's name trails the
+ *  family name: ‎"יוסף אריה כץ ב״ר יעקב"‎ is a כץ, not a יעקב. That tail is
+ *  dropped before the split, which is why the quotes are stripped only
+ *  afterwards — normalizeName would have erased the ‎״‎ that marks it.
+ */
+export function familyThenGiven(name: string): [string, string] {
+  const trimmed = toStr(name).replace(/\s+ב\s*["״'׳]?\s*ר[\s'׳"״].*$/u, "");
+  const parts = normalizeName(trimmed).split(" ").filter(Boolean);
+  if (parts.length === 0) return ["", ""];
+  return [parts[parts.length - 1], parts.slice(0, -1).join(" ")];
+}
+
+/** Family name first, then given name. Both in Hebrew collation. */
+export function byFamilyName(a: string, b: string): number {
+  const [fa, ga] = familyThenGiven(a);
+  const [fb, gb] = familyThenGiven(b);
+  const byFamily = fa.localeCompare(fb, "he");
+  return byFamily !== 0 ? byFamily : ga.localeCompare(gb, "he");
+}
+
 export function fmtDateHe(iso: string): string {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return iso;

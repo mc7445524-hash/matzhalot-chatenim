@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import type { Bachur, Outing } from "@/components/BachurimModule";
 import {
   todayIso, toStr, parseAmount, parseDate, normalizeName, normalizeHeader, fmtDateHe,
+  byFamilyName,
 } from "@/lib/excel";
 import {
   downloadProtectedSheet, colLetter, type Cell, type CellKind,
@@ -123,7 +124,7 @@ export default function OutingsExcel({ mode, bachurim, onDone }: Props) {
   )
     // Explicit, so the order of the form never drifts with the order
     // names happen to sit in storage: shiur א first, and inside each
-    // shiur by name. Anyone holding the printed form can then find a
+    // shiur by family name. Anyone holding the printed form can then find a
     // bachur without searching the whole page.
     .slice()
     .sort((a, b) => {
@@ -132,7 +133,7 @@ export default function OutingsExcel({ mode, bachurim, onDone }: Props) {
       const ra = ia === -1 ? CLASS_ORDER.length : ia;
       const rb = ib === -1 ? CLASS_ORDER.length : ib;
       if (ra !== rb) return ra - rb;
-      return (a.name || "").localeCompare(b.name || "", "he");
+      return byFamilyName(a.name || "", b.name || "");
     });
 
   // ─── Download the form ──────────────────────────────────────
