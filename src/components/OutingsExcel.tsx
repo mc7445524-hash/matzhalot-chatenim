@@ -112,6 +112,10 @@ interface Props {
 export default function OutingsExcel({ mode, bachurim, onDone }: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [plan, setPlan] = useState<Plan | null>(null);
+  /** A whole file that could not be read. Shown as a window rather than a
+   *  toast: a message that fades after four seconds is how an upload comes
+   *  to be believed to have worked. */
+  const [reject, setReject] = useState<{ title: string; detail: string; hint: string } | null>(null);
   const [skipDuplicates, setSkipDuplicates] = useState(false);
   const [openSection, setOpenSection] = useState<"ok" | "bad" | "empty" | null>("ok");
 
@@ -228,6 +232,7 @@ export default function OutingsExcel({ mode, bachurim, onDone }: Props) {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
+    setReject(null);
 
     try {
       const XLSX = await import("xlsx");
@@ -244,7 +249,11 @@ export default function OutingsExcel({ mode, bachurim, onDone }: Props) {
         if (a === normalizeHeader(LBL_DATE)) date = parseDate(r?.[1]);
       }
       if (!outingName) {
-        toast.error('שם היציאה לא מולא. מלא אותו בתא שליד "שם היציאה:" בראש הקובץ ונסה שוב');
+        setReject({
+          title: "הקובץ לא נקלט — חסר שם היציאה",
+          detail: 'התא הצהוב שליד "שם היציאה:" בראש הקובץ נשאר ריק.',
+          hint: "מלאו את שם היציאה, שמרו את הקובץ, והעלו אותו שוב. שום דבר לא נשמר.",
+        });
         return;
       }
 
@@ -252,7 +261,11 @@ export default function OutingsExcel({ mode, bachurim, onDone }: Props) {
         (r || []).some((c) => normalizeHeader(c) === HDR_NAME)
       );
       if (headerIdx < 0) {
-        toast.error("לא נמצאה שורת הכותרות בקובץ. הורד טופס חדש והעלה אותו");
+        setReject({
+          title: "הקובץ לא נקלט — אלו לא הכותרות שלנו",
+          detail: 'לא נמצאה השורה עם הכותרות (מק"ט, שם, שיעור...). כנראה נמחקה או שהקובץ אינו טופס היציאה.',
+          hint: 'הורידו "טופס יציאה" חדש, מלאו רק בתאים הצהובים, והעלו אותו. שום דבר לא נשמר.',
+        });
         return;
       }
 
@@ -268,7 +281,13 @@ export default function OutingsExcel({ mode, bachurim, onDone }: Props) {
 
       const amountCols = isAskanim ? [HDR_AMOUNT] : [...PAYMENT_COLUMNS];
       if (!amountCols.some((h) => col[normalizeHeader(h)] !== undefined)) {
-        toast.error("לא נמצאה עמודת סכום בקובץ. הורד טופס חדש והעלה אותו");
+        setReject({
+          title: "הקובץ לא נקלט — אין עמודת סכום",
+          detail: isAskanim
+            ? 'עמודת "סכום" לא נמצאה בקובץ.'
+            : 'אף אחת מעמודות התשלום (מזומן, אשראי, אחר) לא נמצאה בקובץ.',
+          hint: 'הורידו "טופס יציאה" חדש והעלו אותו. שום דבר לא נשמר.',
+        });
         return;
       }
 
@@ -356,15 +375,24 @@ export default function OutingsExcel({ mode, bachurim, onDone }: Props) {
       }
 
       if (ok.length === 0 && bad.length === 0) {
-        toast.error("לא נמצא אף סכום בקובץ. מלא סכומים ונסה שוב");
+        setReject({
+          title: "הקובץ נקרא, אבל אין בו אף סכום",
+          detail: `עברתי על ${empty.length} שורות וכולן ריקות.`,
+          hint: "מלאו סכומים בתאים הצהובים והעלו שוב. שום דבר לא נשמר.",
+        });
         return;
       }
 
       setSkipDuplicates(false);
-      setOpenSection("ok");
+      // Whatever went wrong is what needs reading, so it opens first.
+      setOpenSection(bad.length > 0 ? "bad" : "ok");
       setPlan({ outingName, date, ok, bad, empty });
     } catch {
-      toast.error("שגיאה בקריאת הקובץ. ודא שזה קובץ אקסל תקין");
+      setReject({
+        title: "הקובץ לא נקלט — לא הצלחתי לפתוח אותו",
+        detail: "הקובץ אינו קובץ אקסל תקין, או שהוא פגום.",
+        hint: 'הורידו "טופס יציאה" חדש והעלו אותו. שום דבר לא נשמר.',
+      });
     }
   };
 
@@ -484,6 +512,23 @@ export default function OutingsExcel({ mode, bachurim, onDone }: Props) {
         onChange={handleUpload}
       />
 
+      <Dialog open={!!reject} onOpenChange={(o) => { if (!o) setReject(null); }}>
+        <DialogContent className="sm:max-w-md" dir="rtl">
+          <DialogHeader>
+            <DialogTitle className="text-red-700">⚠️ {reject?.title}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 text-sm">
+            <p>{reject?.detail}</p>
+            <p className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-amber-900">
+              {reject?.hint}
+            </p>
+          </div>
+          <DialogFooter>
+            <Button onClick={() => setReject(null)}>הבנתי</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={!!plan} onOpenChange={(o) => { if (!o) setPlan(null); }}>
         <DialogContent className="sm:max-w-2xl" dir="rtl">
           <DialogHeader>
@@ -497,6 +542,21 @@ export default function OutingsExcel({ mode, bachurim, onDone }: Props) {
 
           {plan && (
             <div className="space-y-2">
+              <div className="rounded-lg border border-border px-3 py-2 text-sm space-y-0.5">
+                <div className="font-semibold text-emerald-700">
+                  ✅ נקלטו {plan.ok.length} שורות מתוך {plan.ok.length + plan.bad.length + plan.empty.length}
+                </div>
+                {plan.bad.length > 0 && (
+                  <div className="font-semibold text-red-700">
+                    ⚠️ {plan.bad.length} שורות לא נקלטו — פתחו למטה כדי לראות למה
+                  </div>
+                )}
+                {plan.empty.length > 0 && (
+                  <div className="text-muted-foreground">
+                    ⬜ {plan.empty.length} שורות נשארו ריקות ולא ייכנסו
+                  </div>
+                )}
+              </div>
               <Section id="ok" title="✅ ייכנסו" count={rowsToSave.length} tone="bg-emerald-50 text-emerald-900">
                 {plan.ok.map((r) => {
                   const skipped = skipDuplicates && r.duplicate;
