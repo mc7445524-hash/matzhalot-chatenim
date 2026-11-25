@@ -28,6 +28,9 @@ interface AskanimIncome {
   date: string;
   amount: number;
   notes: string;
+  /** notes carries the outing's name and groups the table; a remark about
+   *  this one bachur goes here instead. */
+  comment?: string;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────
@@ -595,7 +598,12 @@ export default function AskanimModule() {
                     <TableCell>{inc.date}</TableCell>
                     <TableCell>{inc.bachurName}</TableCell>
                     <TableCell>{inc.amount.toLocaleString("he-IL")} ₪</TableCell>
-                    <TableCell className="max-w-[200px] truncate">{inc.notes || "—"}</TableCell>
+                    <TableCell className="max-w-[220px]">
+                      <div className="truncate">{inc.notes || "—"}</div>
+                      {inc.comment && (
+                        <div className="truncate text-xs text-muted-foreground">{inc.comment}</div>
+                      )}
+                    </TableCell>
                     <TableCell className="text-center">
                       <div className="flex items-center justify-center gap-2">
                         <Button variant="outline" size="sm" onClick={() => openEditDialog(inc)}>

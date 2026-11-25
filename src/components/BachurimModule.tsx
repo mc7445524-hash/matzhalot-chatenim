@@ -42,6 +42,10 @@ export interface Outing {
   amount: number;
   paymentMethod: string; // "מזומן" | "אשראי" | "אחר"
   paymentMethodDetail?: string;
+  /** A free remark typed beside this outing, e.g. in the Excel form's
+   *  הערות column. Kept apart from the outing's name so that grouping by
+   *  outing is unaffected by what someone wrote about one bachur. */
+  notes?: string;
 }
 
 export interface BasketShare {
@@ -1208,13 +1212,14 @@ export default function BachurimModule() {
                       <div className="rounded-lg border border-border overflow-hidden">
                         <Table>
                           <TableHeader>
-                            <TableRow><TableHead>שם יציאה</TableHead><TableHead>תאריך</TableHead><TableHead>סכום</TableHead><TableHead>אופן תשלום</TableHead><TableHead className="w-20">פעולות</TableHead></TableRow>
+                            <TableRow><TableHead>שם יציאה</TableHead><TableHead>תאריך</TableHead><TableHead>סכום</TableHead><TableHead>אופן תשלום</TableHead><TableHead>הערה</TableHead><TableHead className="w-20">פעולות</TableHead></TableRow>
                           </TableHeader>
                           <TableBody>
                             <TableRow className="bg-muted/60 font-semibold hover:bg-muted/60">
                               <TableCell className="text-sm">סה"כ</TableCell>
                               <TableCell className="text-sm">{b.outings.length} יציאות</TableCell>
                               <TableCell className="text-sm">{fmtCurrency(income)}</TableCell>
+                              <TableCell className="text-sm">—</TableCell>
                               <TableCell className="text-sm">—</TableCell>
                               <TableCell className="text-sm">—</TableCell>
                             </TableRow>
@@ -1224,6 +1229,7 @@ export default function BachurimModule() {
                                 <TableCell className="text-sm">{fmtDate(o.date)}</TableCell>
                                 <TableCell className="text-sm font-medium">{fmtCurrency(o.amount)}</TableCell>
                                 <TableCell className="text-sm">{o.paymentMethod === "אחר" ? `אחר: ${o.paymentMethodDetail || ""}` : (o.paymentMethod || "—")}</TableCell>
+                                <TableCell className="text-sm text-muted-foreground">{o.notes || "—"}</TableCell>
                                 <TableCell className="text-sm">
                                   <div className="flex gap-1">
                                     <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEditOuting(o)}>

@@ -28,6 +28,10 @@ export interface Outing {
   amount: number;
   paymentMethod: string;
   paymentMethodDetail?: string;
+  /** A free remark typed beside this outing, e.g. in the Excel form's
+   *  הערות column. Kept apart from the outing's name so that grouping by
+   *  outing is unaffected by what someone wrote about one bachur. */
+  notes?: string;
 }
 
 export interface Bachur {
@@ -110,6 +114,9 @@ export interface AskanimIncome {
   date: string;
   amount: number;
   notes: string;
+  /** notes carries the outing's name and groups the table; a remark about
+   *  this one bachur goes here instead. */
+  comment?: string;
 }
 
 /** One shop's share of a basket, as it stood when a basket was handed over. */

@@ -54,6 +54,9 @@ interface AskanimIncomeRow {
   date: string;
   amount: number;
   notes: string;
+  /** notes carries the outing's name and groups the table; a remark about
+   *  this one bachur goes here instead. */
+  comment?: string;
 }
 
 /** One amount cell that will become one saved record. */
@@ -396,6 +399,7 @@ export default function OutingsExcel({ mode, bachurim, onDone }: Props) {
             date: plan.date,
             amount: p.amount,
             notes: plan.outingName,
+            comment: r.notes || undefined,
           });
           // Mirrored into the amuta incomes exactly as the manual dialog
           // does; without it the money is missing from the other reports.
@@ -426,6 +430,7 @@ export default function OutingsExcel({ mode, bachurim, onDone }: Props) {
             amount: p.amount,
             paymentMethod: p.method,
             paymentMethodDetail: p.method === "אחר" ? p.detail : undefined,
+            notes: r.notes || undefined,
           });
         }
         additions.set(r.bachurId, list);
@@ -504,6 +509,11 @@ export default function OutingsExcel({ mode, bachurim, onDone }: Props) {
                       <span className="flex-1 font-medium">
                         {r.name}
                         {r.duplicate && <span className="mr-1 text-amber-700">🔁 ייתכן כפול</span>}
+                        {r.notes && (
+                          <span className="block text-xs font-normal text-muted-foreground">
+                            {r.notes}
+                          </span>
+                        )}
                       </span>
                       <span className="text-left shrink-0">
                         {isAskanim
